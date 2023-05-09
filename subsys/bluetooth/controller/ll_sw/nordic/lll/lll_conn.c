@@ -722,7 +722,11 @@ void lll_conn_tx_pkt_set(struct lll_conn *lll, struct pdu_data *pdu_data_tx)
 	uint16_t max_tx_octets;
 
 #if defined(CONFIG_BT_CTLR_DATA_LENGTH)
+#ifdef CONFIG_BT_LL_SW_LLCP_LEGACY
+	max_tx_octets = lll->max_tx_octets;
+#else
 	max_tx_octets = lll->dle.eff.max_tx_octets;
+#endif
 #else /* !CONFIG_BT_CTLR_DATA_LENGTH */
 	max_tx_octets = PDU_DC_PAYLOAD_SIZE_MIN;
 #endif /* !CONFIG_BT_CTLR_DATA_LENGTH */
@@ -915,7 +919,11 @@ static uint16_t max_rx_octets_get(struct lll_conn *lll)
 	uint16_t max_rx_octets;
 
 #if defined(CONFIG_BT_CTLR_DATA_LENGTH)
+#ifdef CONFIG_BT_LL_SW_LLCP_LEGACY
+	max_rx_octets = lll->max_rx_octets;
+#else
 	max_rx_octets = lll->dle.eff.max_rx_octets;
+#endif
 #else /* !CONFIG_BT_CTLR_DATA_LENGTH */
 	ARG_UNUSED(lll);
 	max_rx_octets = PDU_DC_PAYLOAD_SIZE_MIN;
