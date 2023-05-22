@@ -13,6 +13,7 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/pm/device.h>
+#include <zephyr/pm/device_runtime.h>
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/logging/log.h>
 #include "auxdisplay_itron.h"
@@ -44,6 +45,7 @@ struct auxdisplay_itron_data {
 	uint16_t character_y;
 	uint8_t brightness;
 #ifdef CONFIG_MULTITHREADING
+	struct k_sem lock_sem;
 	struct k_sem busy_wait_sem;
 	struct gpio_callback busy_wait_callback;
 #endif
@@ -56,7 +58,8 @@ struct auxdisplay_itron_config {
 	struct gpio_dt_spec busy_gpio;
 };
 
-static int send_cmd(const struct device *dev, const uint8_t *command, uint8_t length);
+static int send_cmd(const struct device *dev, const uint8_t *command, uint8_t length, bool pm,
+		    bool lock);
 static int auxdisplay_itron_is_busy(const struct device *dev);
 static int auxdisplay_itron_clear(const struct device *dev);
 
@@ -96,6 +99,7 @@ static int auxdisplay_itron_init(const struct device *dev)
 		}
 
 #ifdef CONFIG_MULTITHREADING
+		k_sem_init(&data->lock_sem, 1, 1);
 		k_sem_init(&data->busy_wait_sem, 0, 1);
 
 		gpio_init_callback(&data->busy_wait_callback,
@@ -144,12 +148,20 @@ static int auxdisplay_itron_init(const struct device *dev)
 		}
 	} else {
 #ifdef CONFIG_PM_DEVICE
-		/* Ensure display is powered on */
+		/* Ensure display is powered on so that it can be initialised */
 		auxdisplay_itron_pm_action(dev, PM_DEVICE_ACTION_RESUME);
 #endif
 
 		auxdisplay_itron_clear(dev);
 	}
+
+#ifdef CONFIG_PM_DEVICE
+	rc = pm_device_runtime_enable(dev);
+
+	if ((rc < 0) && (rc != -ENOSYS)) {
+		return rc;
+	}
+#endif
 
 	return 0;
 }
@@ -164,11 +176,11 @@ static int auxdisplay_itron_pm_action(const struct device *dev, enum pm_device_a
 	switch (action) {
 	case PM_DEVICE_ACTION_RESUME:
 		cmd[4] = 1;
-		rc = send_cmd(dev, cmd, sizeof(cmd));
+		rc = send_cmd(dev, cmd, sizeof(cmd), true, true);
 		break;
 
 	case PM_DEVICE_ACTION_SUSPEND:
-		rc = send_cmd(dev, cmd, sizeof(cmd));
+		rc = send_cmd(dev, cmd, sizeof(cmd), true, true);
 		break;
 
 	default:
@@ -179,12 +191,36 @@ static int auxdisplay_itron_pm_action(const struct device *dev, enum pm_device_a
 }
 #endif /* CONFIG_PM_DEVICE */
 
+static bool auxdisplay_itron_is_enabled(const struct device *dev)
+{
+	enum pm_device_state state;
+	int rc;
+
+	rc = pm_device_state_get(dev, &state);
+
+	if (state == PM_DEVICE_STATE_ACTIVE) {
+		return true;
+	}
+
+	return false;
+}
+
+static int auxdisplay_itron_display_on(const struct device *dev)
+{
+	return pm_device_runtime_get(dev);
+}
+
+static int auxdisplay_itron_display_off(const struct device *dev)
+{
+	return pm_device_runtime_put(dev);
+}
+
 static int auxdisplay_itron_cursor_set_enabled(const struct device *dev, bool enabled)
 {
 	uint8_t cmd[] = {AUXDISPLAY_ITRON_CMD_USER_SETTING, AUXDISPLAY_ITRON_CMD_CURSOR,
 			 (uint8_t)enabled};
 
-	return send_cmd(dev, cmd, sizeof(cmd));
+	return send_cmd(dev, cmd, sizeof(cmd), false, true);
 }
 
 static int auxdisplay_itron_cursor_position_set(const struct device *dev,
@@ -201,7 +237,7 @@ static int auxdisplay_itron_cursor_position_set(const struct device *dev,
 	sys_put_le16(x, &cmd[2]);
 	sys_put_le16(y, &cmd[4]);
 
-	return send_cmd(dev, cmd, sizeof(cmd));
+	return send_cmd(dev, cmd, sizeof(cmd), false, true);
 }
 
 static int auxdisplay_itron_capabilities_get(const struct device *dev,
@@ -218,53 +254,89 @@ static int auxdisplay_itron_clear(const struct device *dev)
 {
 	uint8_t cmd[] = {AUXDISPLAY_ITRON_CMD_DISPLAY_CLEAR};
 
-	return send_cmd(dev, cmd, sizeof(cmd));
+	return send_cmd(dev, cmd, sizeof(cmd), false, true);
 }
 
 static int auxdisplay_itron_brightness_get(const struct device *dev, uint8_t *brightness)
 {
-	const struct auxdisplay_itron_data *data = dev->data;
+	struct auxdisplay_itron_data *data = dev->data;
+
+#ifdef CONFIG_MULTITHREADING
+	k_sem_take(&data->lock_sem, K_FOREVER);
+#endif
 
 	*brightness = data->brightness;
+
+#ifdef CONFIG_MULTITHREADING
+	k_sem_give(&data->lock_sem);
+#endif
 
 	return 0;
 }
 
 static int auxdisplay_itron_brightness_set(const struct device *dev, uint8_t brightness)
 {
+	struct auxdisplay_itron_data *data = dev->data;
 	uint8_t cmd[] = {AUXDISPLAY_ITRON_CMD_USER_SETTING, AUXDISPLAY_ITRON_CMD_BRIGHTNESS,
 			 brightness};
+	int rc;
 
 	if (brightness < AUXDISPLAY_ITRON_BRIGHTNESS_MIN ||
 	    brightness > AUXDISPLAY_ITRON_BRIGHTNESS_MAX) {
 		return -EINVAL;
 	}
 
-	return send_cmd(dev, cmd, sizeof(cmd));
+#ifdef CONFIG_MULTITHREADING
+	k_sem_take(&data->lock_sem, K_FOREVER);
+#endif
+
+	rc = send_cmd(dev, cmd, sizeof(cmd), false, false);
+
+	if (rc == 0) {
+		data->brightness = brightness;
+	}
+
+#ifdef CONFIG_MULTITHREADING
+	k_sem_give(&data->lock_sem);
+#endif
+
+	return rc;
 }
 
 static int auxdisplay_itron_is_busy(const struct device *dev)
 {
 	const struct auxdisplay_itron_config *config = dev->config;
-
-#ifdef CONFIG_PM_DEVICE
-	enum pm_device_state state;
-
-	pm_device_state_get(dev, &state);
-
-	if (state == PM_DEVICE_STATE_SUSPENDED) {
-		return -EIO;
-	}
-#endif
+	int rc;
 
 	if (config->busy_gpio.port == NULL) {
 		return -ENOTSUP;
 	}
 
-	return gpio_pin_get_dt(&config->busy_gpio);
+	rc = gpio_pin_get_dt(&config->busy_gpio);
+
+	return rc;
 }
 
-static int send_cmd(const struct device *dev, const uint8_t *command, uint8_t length)
+static int auxdisplay_itron_is_busy_check(const struct device *dev)
+{
+	struct auxdisplay_itron_data *data = dev->data;
+	int rc;
+
+#ifdef CONFIG_MULTITHREADING
+	k_sem_take(&data->lock_sem, K_FOREVER);
+#endif
+
+	rc = auxdisplay_itron_is_busy(dev);
+
+#ifdef CONFIG_MULTITHREADING
+	k_sem_give(&data->lock_sem);
+#endif
+
+	return rc;
+}
+
+static int send_cmd(const struct device *dev, const uint8_t *command, uint8_t length, bool pm,
+		    bool lock)
 {
 	uint8_t i = 0;
 	const struct auxdisplay_itron_config *config = dev->config;
@@ -272,13 +344,28 @@ static int send_cmd(const struct device *dev, const uint8_t *command, uint8_t le
 	int rc = 0;
 #ifdef CONFIG_MULTITHREADING
 	struct auxdisplay_itron_data *data = dev->data;
+#endif
 
+#ifdef CONFIG_PM
+	if (pm == false && auxdisplay_itron_is_enabled(dev) == false) {
+		/* Display is not powered, only PM commands can be used */
+		return -ESHUTDOWN;
+	}
+#endif
+
+#ifdef CONFIG_MULTITHREADING
+	if (lock) {
+		k_sem_take(&data->lock_sem, K_FOREVER);
+	}
+#endif
+
+#ifdef CONFIG_MULTITHREADING
 	/* Enable interrupt triggering */
 	rc = gpio_pin_interrupt_configure_dt(&config->busy_gpio, GPIO_INT_EDGE_TO_INACTIVE);
 
 	if (rc != 0) {
 		LOG_ERR("Failed to enable busy interrupt: %d", rc);
-		return rc;
+		goto end;
 	}
 #endif
 
@@ -315,6 +402,13 @@ cleanup:
 	(void)gpio_pin_interrupt_configure_dt(&config->busy_gpio, GPIO_INT_DISABLE);
 #endif
 
+end:
+#ifdef CONFIG_MULTITHREADING
+	if (lock) {
+		k_sem_give(&data->lock_sem);
+	}
+#endif
+
 	return rc;
 }
 
@@ -335,17 +429,19 @@ static int auxdisplay_itron_write(const struct device *dev, const uint8_t *data,
 		++i;
 	}
 
-	return send_cmd(dev, data, len);
+	return send_cmd(dev, data, len, false, true);
 }
 
 static const struct auxdisplay_driver_api auxdisplay_itron_auxdisplay_api = {
+	.display_on = auxdisplay_itron_display_on,
+	.display_off = auxdisplay_itron_display_off,
 	.cursor_set_enabled = auxdisplay_itron_cursor_set_enabled,
 	.cursor_position_set = auxdisplay_itron_cursor_position_set,
 	.capabilities_get = auxdisplay_itron_capabilities_get,
 	.clear = auxdisplay_itron_clear,
 	.brightness_get = auxdisplay_itron_brightness_get,
 	.brightness_set = auxdisplay_itron_brightness_set,
-	.is_busy = auxdisplay_itron_is_busy,
+	.is_busy = auxdisplay_itron_is_busy_check,
 	.write = auxdisplay_itron_write,
 };
 

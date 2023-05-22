@@ -133,6 +133,20 @@ struct auxdisplay_character {
 };
 
 /**
+ * @typedef	auxdisplay_display_on_t
+ * @brief	Callback API to turn display on
+ * See auxdisplay_display_on() for argument description
+ */
+typedef int (*auxdisplay_display_on_t)(const struct device *dev);
+
+/**
+ * @typedef	auxdisplay_display_off_t
+ * @brief	Callback API to turn display off
+ * See auxdisplay_display_on() for argument description
+ */
+typedef int (*auxdisplay_display_off_t)(const struct device *dev);
+
+/**
  * @typedef	auxdisplay_cursor_set_enabled_t
  * @brief	Callback API to turn display cursor visibility on or off
  * See auxdisplay_cursor_set_enabled() for argument description
@@ -271,6 +285,8 @@ typedef int (*auxdisplay_custom_command_t)(const struct device *dev,
  */
 
 struct auxdisplay_driver_api {
+	auxdisplay_display_on_t display_on;
+	auxdisplay_display_off_t display_off;
 	auxdisplay_cursor_set_enabled_t cursor_set_enabled;
 	auxdisplay_position_blinking_set_enabled_t position_blinking_set_enabled;
 	auxdisplay_cursor_shift_set_t cursor_shift_set;
@@ -295,6 +311,50 @@ struct auxdisplay_driver_api {
  */
 
 /**
+ * @brief		Turn display on and increase PM count.
+ *
+ * @param dev		Auxiliary display device instance
+ *
+ * @retval		0 on success.
+ * @retval		-ENOSYS if not supported/implemented.
+ * @retval		-errno Negative errno code on other failure.
+ */
+__syscall int auxdisplay_display_on(const struct device *dev);
+
+static inline int z_impl_auxdisplay_display_on(const struct device *dev)
+{
+	struct auxdisplay_driver_api *api = (struct auxdisplay_driver_api *)dev->api;
+
+	if (!api->display_on) {
+		return -ENOSYS;
+	}
+
+	return api->display_on(dev);
+}
+
+/**
+ * @brief		Turn display off and decrease PM count.
+ *
+ * @param dev		Auxiliary display device instance
+ *
+ * @retval		0 on success.
+ * @retval		-ENOSYS if not supported/implemented.
+ * @retval		-errno Negative errno code on other failure.
+ */
+__syscall int auxdisplay_display_off(const struct device *dev);
+
+static inline int z_impl_auxdisplay_display_off(const struct device *dev)
+{
+	struct auxdisplay_driver_api *api = (struct auxdisplay_driver_api *)dev->api;
+
+	if (!api->display_off) {
+		return -ENOSYS;
+	}
+
+	return api->display_off(dev);
+}
+
+/**
  * @brief		Set cursor enabled status on an auxiliary display
  *
  * @param dev		Auxiliary display device instance
@@ -302,7 +362,6 @@ struct auxdisplay_driver_api {
  *
  * @retval		0 on success.
  * @retval		-ENOSYS if not supported/implemented.
- * @retval		-EIO if powered down.
  * @retval		-errno Negative errno code on other failure.
  */
 __syscall int auxdisplay_cursor_set_enabled(const struct device *dev,
@@ -317,16 +376,6 @@ static inline int z_impl_auxdisplay_cursor_set_enabled(const struct device *dev,
 		return -ENOSYS;
 	}
 
-#ifdef CONFIG_PM_DEVICE
-	enum pm_device_state state;
-
-	pm_device_state_get(dev, &state);
-
-	if (state == PM_DEVICE_STATE_SUSPENDED) {
-		return -EIO;
-	}
-#endif
-
 	return api->cursor_set_enabled(dev, enabled);
 }
 
@@ -338,7 +387,6 @@ static inline int z_impl_auxdisplay_cursor_set_enabled(const struct device *dev,
  *
  * @retval		0 on success.
  * @retval		-ENOSYS if not supported/implemented.
- * @retval		-EIO if powered down.
  * @retval		-errno Negative errno code on other failure.
  */
 __syscall int auxdisplay_position_blinking_set_enabled(const struct device *dev,
@@ -352,16 +400,6 @@ static inline int z_impl_auxdisplay_position_blinking_set_enabled(const struct d
 	if (!api->position_blinking_set_enabled) {
 		return -ENOSYS;
 	}
-
-#ifdef CONFIG_PM_DEVICE
-	enum pm_device_state state;
-
-	pm_device_state_get(dev, &state);
-
-	if (state == PM_DEVICE_STATE_SUSPENDED) {
-		return -EIO;
-	}
-#endif
 
 	return api->position_blinking_set_enabled(dev, enabled);
 }
@@ -377,7 +415,6 @@ static inline int z_impl_auxdisplay_position_blinking_set_enabled(const struct d
  * @retval		0 on success.
  * @retval		-ENOSYS if not supported/implemented.
  * @retval		-EINVAL if provided argument is invalid.
- * @retval		-EIO if powered down.
  * @retval		-errno Negative errno code on other failure.
  */
 __syscall int auxdisplay_cursor_shift_set(const struct device *dev,
@@ -397,16 +434,6 @@ static inline int z_impl_auxdisplay_cursor_shift_set(const struct device *dev,
 		return -EINVAL;
 	}
 
-#ifdef CONFIG_PM_DEVICE
-	enum pm_device_state state;
-
-	pm_device_state_get(dev, &state);
-
-	if (state == PM_DEVICE_STATE_SUSPENDED) {
-		return -EIO;
-	}
-#endif
-
 	return api->cursor_shift_set(dev, direction, display_shift);
 }
 
@@ -421,7 +448,6 @@ static inline int z_impl_auxdisplay_cursor_shift_set(const struct device *dev,
  * @retval	0 on success.
  * @retval	-ENOSYS if not supported/implemented.
  * @retval	-EINVAL if provided argument is invalid.
- * @retval	-EIO if powered down.
  * @retval	-errno Negative errno code on other failure.
  */
 __syscall int auxdisplay_cursor_position_set(const struct device *dev,
@@ -441,16 +467,6 @@ static inline int z_impl_auxdisplay_cursor_position_set(const struct device *dev
 	} else if (type == AUXDISPLAY_POSITION_ABSOLUTE && (x < 0 || y < 0)) {
 		return -EINVAL;
 	}
-
-#ifdef CONFIG_PM_DEVICE
-	enum pm_device_state state;
-
-	pm_device_state_get(dev, &state);
-
-	if (state == PM_DEVICE_STATE_SUSPENDED) {
-		return -EIO;
-	}
-#endif
 
 	return api->cursor_position_set(dev, type, x, y);
 }
@@ -493,7 +509,6 @@ static inline int z_impl_auxdisplay_cursor_position_get(const struct device *dev
  * @retval	0 on success.
  * @retval	-ENOSYS if not supported/implemented.
  * @retval	-EINVAL if provided argument is invalid.
- * @retval	-EIO if powered down.
  * @retval	-errno Negative errno code on other failure.
  */
 __syscall int auxdisplay_display_position_set(const struct device *dev,
@@ -513,16 +528,6 @@ static inline int z_impl_auxdisplay_display_position_set(const struct device *de
 	} else if (type == AUXDISPLAY_POSITION_ABSOLUTE && (x < 0 || y < 0)) {
 		return -EINVAL;
 	}
-
-#ifdef CONFIG_PM_DEVICE
-	enum pm_device_state state;
-
-	pm_device_state_get(dev, &state);
-
-	if (state == PM_DEVICE_STATE_SUSPENDED) {
-		return -EIO;
-	}
-#endif
 
 	return api->display_position_set(dev, type, x, y);
 }
@@ -582,7 +587,6 @@ static inline int z_impl_auxdisplay_capabilities_get(const struct device *dev,
  * @param dev	Auxiliary display device instance
  *
  * @retval	0 on success.
- * @retval	-EIO if powered down.
  * @retval	-errno Negative errno code on other failure.
  */
 __syscall int auxdisplay_clear(const struct device *dev);
@@ -590,16 +594,6 @@ __syscall int auxdisplay_clear(const struct device *dev);
 static inline int z_impl_auxdisplay_clear(const struct device *dev)
 {
 	struct auxdisplay_driver_api *api = (struct auxdisplay_driver_api *)dev->api;
-
-#ifdef CONFIG_PM_DEVICE
-	enum pm_device_state state;
-
-	pm_device_state_get(dev, &state);
-
-	if (state == PM_DEVICE_STATE_SUSPENDED) {
-		return -EIO;
-	}
-#endif
 
 	return api->clear(dev);
 }
@@ -638,7 +632,6 @@ static inline int z_impl_auxdisplay_brightness_get(const struct device *dev,
  * @retval		0 on success.
  * @retval		-ENOSYS if not supported/implemented.
  * @retval		-EINVAL if provided argument is invalid.
- * @retval		-EIO if powered down.
  * @retval		-errno Negative errno code on other failure.
  */
 __syscall int auxdisplay_brightness_set(const struct device *dev,
@@ -652,16 +645,6 @@ static inline int z_impl_auxdisplay_brightness_set(const struct device *dev,
 	if (!api->brightness_set) {
 		return -ENOSYS;
 	}
-
-#ifdef CONFIG_PM_DEVICE
-	enum pm_device_state state;
-
-	pm_device_state_get(dev, &state);
-
-	if (state == PM_DEVICE_STATE_SUSPENDED) {
-		return -EIO;
-	}
-#endif
 
 	return api->brightness_set(dev, brightness);
 }
@@ -700,7 +683,6 @@ static inline int z_impl_auxdisplay_backlight_get(const struct device *dev,
  * @retval		0 on success.
  * @retval		-ENOSYS if not supported/implemented.
  * @retval		-EINVAL if provided argument is invalid.
- * @retval		-EIO if powered down.
  * @retval		-errno Negative errno code on other failure.
  */
 __syscall int auxdisplay_backlight_set(const struct device *dev,
@@ -714,16 +696,6 @@ static inline int z_impl_auxdisplay_backlight_set(const struct device *dev,
 	if (!api->backlight_set) {
 		return -ENOSYS;
 	}
-
-#ifdef CONFIG_PM_DEVICE
-	enum pm_device_state state;
-
-	pm_device_state_get(dev, &state);
-
-	if (state == PM_DEVICE_STATE_SUSPENDED) {
-		return -EIO;
-	}
-#endif
 
 	return api->backlight_set(dev, backlight);
 }
@@ -769,7 +741,6 @@ static inline int z_impl_auxdisplay_is_busy(const struct device *dev)
  * @retval		0 on success.
  * @retval		-ENOSYS if not supported/implemented.
  * @retval		-EINVAL if provided argument is invalid.
- * @retval		-EIO if powered down.
  * @retval		-errno Negative errno code on other failure.
  */
 __syscall int auxdisplay_custom_character_set(const struct device *dev,
@@ -784,16 +755,6 @@ static inline int z_impl_auxdisplay_custom_character_set(const struct device *de
 		return -ENOSYS;
 	}
 
-#ifdef CONFIG_PM_DEVICE
-	enum pm_device_state state;
-
-	pm_device_state_get(dev, &state);
-
-	if (state == PM_DEVICE_STATE_SUSPENDED) {
-		return -EIO;
-	}
-#endif
-
 	return api->custom_character_set(dev, character);
 }
 
@@ -805,7 +766,6 @@ static inline int z_impl_auxdisplay_custom_character_set(const struct device *de
  * @param len	Length of text data to write
  *
  * @retval	0 on success.
- * @retval	-EIO if powered down.
  * @retval	-EINVAL if provided argument is invalid.
  * @retval	-errno Negative errno code on other failure.
  */
@@ -816,16 +776,6 @@ static inline int z_impl_auxdisplay_write(const struct device *dev,
 					  const uint8_t *data, uint16_t len)
 {
 	struct auxdisplay_driver_api *api = (struct auxdisplay_driver_api *)dev->api;
-
-#ifdef CONFIG_PM_DEVICE
-	enum pm_device_state state;
-
-	pm_device_state_get(dev, &state);
-
-	if (state == PM_DEVICE_STATE_SUSPENDED) {
-		return -EIO;
-	}
-#endif
 
 	return api->write(dev, data, len);
 }
@@ -839,7 +789,6 @@ static inline int z_impl_auxdisplay_write(const struct device *dev,
  * @retval	0 on success.
  * @retval	-ENOSYS if not supported/implemented.
  * @retval	-EINVAL if provided argument is invalid.
- * @retval	-EIO if powered down.
  * @retval	-errno Negative errno code on other failure.
  */
 __syscall int auxdisplay_custom_command(const struct device *dev,
@@ -853,16 +802,6 @@ static inline int z_impl_auxdisplay_custom_command(const struct device *dev,
 	if (!api->custom_command) {
 		return -ENOSYS;
 	}
-
-#ifdef CONFIG_PM_DEVICE
-	enum pm_device_state state;
-
-	pm_device_state_get(dev, &state);
-
-	if (state == PM_DEVICE_STATE_SUSPENDED) {
-		return -EIO;
-	}
-#endif
 
 	return api->custom_command(dev, data);
 }

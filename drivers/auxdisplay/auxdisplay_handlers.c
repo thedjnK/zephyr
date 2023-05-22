@@ -7,12 +7,19 @@
 #include <zephyr/drivers/auxdisplay.h>
 #include <zephyr/syscall_handler.h>
 
-static inline int z_vrfy_auxdisplay_power_set_enabled(const struct device *dev, bool enabled)
+static inline int z_vrfy_auxdisplay_display_on(const struct device *dev)
 {
 	Z_OOPS(Z_SYSCALL_OBJ(dev, K_OBJ_DRIVER_AUXDISPLAY));
-	return z_impl_auxdisplay_power_set_enabled(dev, enabled);
+	return z_impl_auxdisplay_display_on(dev);
 }
-#include <syscalls/auxdisplay_power_set_enabled_mrsh.c>
+#include <syscalls/auxdisplay_display_on_mrsh.c>
+
+static inline int z_vrfy_auxdisplay_display_off(const struct device *dev)
+{
+	Z_OOPS(Z_SYSCALL_OBJ(dev, K_OBJ_DRIVER_AUXDISPLAY));
+	return z_impl_auxdisplay_display_off(dev);
+}
+#include <syscalls/auxdisplay_display_off_mrsh.c>
 
 static inline int z_vrfy_auxdisplay_cursor_set_enabled(const struct device *dev, bool enabled)
 {
