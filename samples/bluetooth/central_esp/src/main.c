@@ -1,12 +1,14 @@
 /*
  * Copyright (c) 2023 Jamie M.
+ *
+ * All right reserved. This code is not apache or FOSS/copyleft licensed.
  */
 
-#include <zephyr/types.h>
 #include <stddef.h>
 #include <errno.h>
+#include <stdio.h>
 #include <zephyr/kernel.h>
-
+#include <zephyr/types.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/hci.h>
 #include <zephyr/bluetooth/conn.h>
@@ -14,9 +16,10 @@
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/bluetooth/addr.h>
 #include <zephyr/sys/byteorder.h>
+#include <zephyr/shell/shell.h>
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(abe, 4);
+LOG_MODULE_REGISTER(abe, CONFIG_APPLICATION_LOG_LEVEL);
 
 #define SENSOR_THREAD_STACK_SIZE 384
 #define SENSOR_THREAD_PRIORITY 1
@@ -109,8 +112,7 @@ static k_tid_t sensor_thread_id;
 static struct k_thread sensor_thread;
 static struct k_work subscribe_workqueue;
 
-static uint8_t notify_func(struct bt_conn *conn,
-			   struct bt_gatt_subscribe_params *params,
+static uint8_t notify_func(struct bt_conn *conn, struct bt_gatt_subscribe_params *params,
 			   const void *data, uint16_t length)
 {
 	uint8_t i = 0;
@@ -184,7 +186,8 @@ LOG_ERR("not valid");
 	return BT_GATT_ITER_CONTINUE;
 }
 
-void subscribe_func(struct bt_conn *conn, uint8_t err, struct bt_gatt_subscribe_params *params)
+static void subscribe_func(struct bt_conn *conn, uint8_t err,
+			   struct bt_gatt_subscribe_params *params)
 {
 	if (err) {
 		int err;
@@ -225,6 +228,7 @@ static void subscribe_work(struct k_work *work)
 	params->value = BT_GATT_CCC_NOTIFY;
 
 	err = bt_gatt_subscribe(devices[current_index].connection, params);
+
 	if (err && err != -EALREADY) {
 		LOG_ERR("Subscribe failed (err %d)", err);
 	} else {
@@ -232,8 +236,7 @@ static void subscribe_work(struct k_work *work)
 	}
 }
 
-static uint8_t discover_func(struct bt_conn *conn,
-			     const struct bt_gatt_attr *attr,
+static uint8_t discover_func(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 			     struct bt_gatt_discover_params *params)
 {
 	int err = 0;
@@ -261,10 +264,10 @@ static uint8_t discover_func(struct bt_conn *conn,
 		if (err) {
 			LOG_ERR("Discover failed (err %d)", err);
 		}
-	} else if (!bt_uuid_cmp(discover_params.uuid,
-				BT_UUID_PRESSURE)) {
+	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_PRESSURE)) {
 		devices[current_index].handles.status = FIND_PRESSURE_CCC;
-		devices[current_index].handles.pressure.value_handle = bt_gatt_attr_value_handle(attr);
+		devices[current_index].handles.pressure.value_handle =
+								bt_gatt_attr_value_handle(attr);
 
 		memcpy(&uuid, BT_UUID_GATT_CCC, sizeof(uuid));
 		discover_params.uuid = &uuid.uuid;
@@ -275,7 +278,8 @@ static uint8_t discover_func(struct bt_conn *conn,
 		if (err) {
 			LOG_ERR("Discover failed (err %d)", err);
 		}
-	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_GATT_CCC) && devices[current_index].handles.status == FIND_PRESSURE_CCC) {
+	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_GATT_CCC) &&
+		   devices[current_index].handles.status == FIND_PRESSURE_CCC) {
 		devices[current_index].handles.status = FIND_HUMIDITY;
 		devices[current_index].handles.pressure.ccc_handle = attr->handle;
 
@@ -288,10 +292,10 @@ static uint8_t discover_func(struct bt_conn *conn,
 		if (err) {
 			LOG_ERR("Discover failed (err %d)", err);
 		}
-	} else if (!bt_uuid_cmp(discover_params.uuid,
-				BT_UUID_HUMIDITY)) {
+	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_HUMIDITY)) {
 		devices[current_index].handles.status = FIND_HUMIDITY_CCC;
-		devices[current_index].handles.humidity.value_handle = bt_gatt_attr_value_handle(attr);
+		devices[current_index].handles.humidity.value_handle =
+								bt_gatt_attr_value_handle(attr);
 
 		memcpy(&uuid, BT_UUID_GATT_CCC, sizeof(uuid));
 		discover_params.uuid = &uuid.uuid;
@@ -302,7 +306,8 @@ static uint8_t discover_func(struct bt_conn *conn,
 		if (err) {
 			LOG_ERR("Discover failed (err %d)", err);
 		}
-	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_GATT_CCC) && devices[current_index].handles.status == FIND_HUMIDITY_CCC) {
+	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_GATT_CCC) &&
+		   devices[current_index].handles.status == FIND_HUMIDITY_CCC) {
 		devices[current_index].handles.status = FIND_DEW_POINT;
 		devices[current_index].handles.humidity.ccc_handle = attr->handle;
 
@@ -315,10 +320,10 @@ static uint8_t discover_func(struct bt_conn *conn,
 		if (err) {
 			LOG_ERR("Discover failed (err %d)", err);
 		}
-	} else if (!bt_uuid_cmp(discover_params.uuid,
-				BT_UUID_DEW_POINT)) {
+	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_DEW_POINT)) {
 		devices[current_index].handles.status = FIND_DEW_POINT_CCC;
-		devices[current_index].handles.dew_point.value_handle = bt_gatt_attr_value_handle(attr);
+		devices[current_index].handles.dew_point.value_handle =
+								bt_gatt_attr_value_handle(attr);
 
 		memcpy(&uuid, BT_UUID_GATT_CCC, sizeof(uuid));
 		discover_params.uuid = &uuid.uuid;
@@ -329,7 +334,8 @@ static uint8_t discover_func(struct bt_conn *conn,
 		if (err) {
 			LOG_ERR("Discover failed (err %d)", err);
 		}
-	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_GATT_CCC) && devices[current_index].handles.status == FIND_DEW_POINT_CCC) {
+	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_GATT_CCC) &&
+		   devices[current_index].handles.status == FIND_DEW_POINT_CCC) {
 		devices[current_index].handles.status = FIND_TEMPERATURE;
 		devices[current_index].handles.dew_point.ccc_handle = attr->handle;
 
@@ -342,10 +348,10 @@ static uint8_t discover_func(struct bt_conn *conn,
 		if (err) {
 			LOG_ERR("Discover failed (err %d)", err);
 		}
-	} else if (!bt_uuid_cmp(discover_params.uuid,
-				BT_UUID_TEMPERATURE)) {
+	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_TEMPERATURE)) {
 		devices[current_index].handles.status = FIND_TEMPERATURE_CCC;
-		devices[current_index].handles.temperature.value_handle = bt_gatt_attr_value_handle(attr);
+		devices[current_index].handles.temperature.value_handle =
+								bt_gatt_attr_value_handle(attr);
 
 		memcpy(&uuid, BT_UUID_GATT_CCC, sizeof(uuid));
 		discover_params.uuid = &uuid.uuid;
@@ -356,7 +362,8 @@ static uint8_t discover_func(struct bt_conn *conn,
 		if (err) {
 			LOG_ERR("Discover failed (err %d)", err);
 		}
-	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_GATT_CCC) && devices[current_index].handles.status == FIND_TEMPERATURE_CCC) {
+	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_GATT_CCC) &&
+		   devices[current_index].handles.status == FIND_TEMPERATURE_CCC) {
 		devices[current_index].handles.status = SUBSCRIBE_PRESSURE;
 		devices[current_index].handles.temperature.ccc_handle = attr->handle;
 
@@ -478,7 +485,8 @@ static void sensor_function(void *, void *, void *)
 
 		devices[current_index].state = STATE_CONNECTING;
 
-		err = bt_conn_le_create(&devices[current_index].address, BT_CONN_LE_CREATE_CONN, param, &devices[current_index].connection);
+		err = bt_conn_le_create(&devices[current_index].address, BT_CONN_LE_CREATE_CONN,
+					param, &devices[current_index].connection);
 
 		if (err) {
 			LOG_ERR("Got error: %d", err);
@@ -514,7 +522,58 @@ int main(void)
 	current_index = 0;
 
 /* */
-	sensor_thread_id = k_thread_create(&sensor_thread, sensor_thread_stack, K_THREAD_STACK_SIZEOF(sensor_thread_stack), sensor_function, NULL, NULL, NULL, SENSOR_THREAD_PRIORITY, 0, K_NO_WAIT);
+	sensor_thread_id = k_thread_create(&sensor_thread, sensor_thread_stack,
+					   K_THREAD_STACK_SIZEOF(sensor_thread_stack),
+					   sensor_function, NULL, NULL, NULL,
+					   SENSOR_THREAD_PRIORITY, 0, K_NO_WAIT);
 
 	return 0;
 }
+
+/* Outputs ESS readings in the following format:
+ * Start delimiter: ##
+ * { for each device with data:
+ *     Index number: e.g. 0
+ *     Temperature reading: e.g. 25.12
+ *     Pressure reading: e.g. 1000270
+ *     Humidity reading: e.g. 52.04
+ *     Dew point reading: e.g. 8
+ * }
+ * End delimiter: ^^
+ *
+ * Each value has a comma (,) separator.
+ */
+static int ess_readings_handler(const struct shell *sh, size_t argc, char **argv)
+{
+	uint8_t i = 0;
+	uint8_t buffer[128] = {0};
+
+	while (i < DEVICE_COUNT) {
+		if (devices[i].state == STATE_ACTIVE &&
+		    devices[i].readings.received == RECEIVED_ALL) {
+			sprintf(&buffer[strlen(buffer)], "%d,%.2f,%.0f,%.2f,%d,", i,
+				devices[i].readings.temperature, devices[i].readings.pressure,
+				devices[i].readings.humidity, devices[i].readings.dew_point);
+			devices[i].readings.received = RECEIVED_NONE;
+		}
+
+		++i;
+	}
+
+	if (strlen(buffer) > 0) {
+		buffer[(strlen(buffer) - 1)] = 0;
+	}
+
+        shell_print(sh, "##%s^^", buffer);
+
+        return 0;
+}
+
+SHELL_STATIC_SUBCMD_SET_CREATE(ess_cmd,
+        /* 'version' command handler. */
+        SHELL_CMD(readings, NULL, "Output ESS values", ess_readings_handler),
+        /* Array terminator. */
+        SHELL_SUBCMD_SET_END
+);
+
+SHELL_CMD_REGISTER(ess, &ess_cmd, "ESS profile commands", NULL);

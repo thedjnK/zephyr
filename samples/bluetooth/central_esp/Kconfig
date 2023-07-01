@@ -1,0 +1,11 @@
+# Copyright 2023 Jamie M.
+
+menu "Application settings"
+
+module = APPLICATION
+module-str = application
+source "subsys/logging/Kconfig.template.log_config"
+
+endmenu
+
+source "Kconfig.zephyr"
