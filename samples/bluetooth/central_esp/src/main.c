@@ -34,43 +34,84 @@ enum device_state_t {
 
 enum handle_status_t {
 	FIND_ESS_SERVICE = 0,
-	FIND_PRESSURE,
-	FIND_PRESSURE_CCC,
-	FIND_HUMIDITY,
-	FIND_HUMIDITY_CCC,
-	FIND_DEW_POINT,
-	FIND_DEW_POINT_CCC,
+#ifdef CONFIG_APP_ESS_TEMPERATURE
 	FIND_TEMPERATURE,
 	FIND_TEMPERATURE_CCC,
-	SUBSCRIBE_PRESSURE,
-	SUBSCRIBE_HUMDIITY,
-	SUBSCRIBE_DEW_POINT,
+#endif
+#ifdef CONFIG_APP_ESS_HUMIDITY
+	FIND_HUMIDITY,
+	FIND_HUMIDITY_CCC,
+#endif
+#ifdef CONFIG_APP_ESS_PRESSURE
+	FIND_PRESSURE,
+	FIND_PRESSURE_CCC,
+#endif
+#ifdef CONFIG_APP_ESS_DEW_POINT
+	FIND_DEW_POINT,
+	FIND_DEW_POINT_CCC,
+#endif
+#ifdef CONFIG_APP_ESS_TEMPERATURE
 	SUBSCRIBE_TEMPERATURE,
+#endif
+#ifdef CONFIG_APP_ESS_HUMIDITY
+	SUBSCRIBE_HUMDIITY,
+#endif
+#ifdef CONFIG_APP_ESS_PRESSURE
+	SUBSCRIBE_PRESSURE,
+#endif
+#ifdef CONFIG_APP_ESS_DEW_POINT
+	SUBSCRIBE_DEW_POINT,
+#endif
 };
 
 enum readings_received_t {
 	RECEIVED_NONE = 0,
+#ifdef CONFIG_APP_ESS_TEMPERATURE
 	RECEIVED_TEMPERATURE = BIT(0),
+#endif
+#ifdef CONFIG_APP_ESS_HUMIDITY
 	RECEIVED_HUMIDITY = BIT(1),
+#endif
+#ifdef CONFIG_APP_ESS_PRESSURE
 	RECEIVED_PRESSURE = BIT(2),
+#endif
+#ifdef CONFIG_APP_ESS_DEW_POINT
 	RECEIVED_DEW_POINT = BIT(3),
-	RECEIVED_ALL = (BIT(4) - 1),
+#endif
+	RECEIVED_TMP_BITMASK,
+	RECEIVED_ALL = (((RECEIVED_TMP_BITMASK - 1) << 1) - 1),
 };
 
 struct device_handles {
 	enum handle_status_t status;
 	uint16_t service;
+#ifdef CONFIG_APP_ESS_TEMPERATURE
 	struct bt_gatt_subscribe_params temperature;
-	struct bt_gatt_subscribe_params pressure;
+#endif
+#ifdef CONFIG_APP_ESS_HUMIDITY
 	struct bt_gatt_subscribe_params humidity;
+#endif
+#ifdef CONFIG_APP_ESS_PRESSURE
+	struct bt_gatt_subscribe_params pressure;
+#endif
+#ifdef CONFIG_APP_ESS_DEW_POINT
 	struct bt_gatt_subscribe_params dew_point;
+#endif
 };
 
 struct device_readings {
+#ifdef CONFIG_APP_ESS_TEMPERATURE
 	float temperature;
-	float pressure;
+#endif
+#ifdef CONFIG_APP_ESS_HUMIDITY
 	float humidity;
+#endif
+#ifdef CONFIG_APP_ESS_PRESSURE
+	float pressure;
+#endif
+#ifdef CONFIG_APP_ESS_DEW_POINT
 	int8_t dew_point;
+#endif
 	enum readings_received_t received;
 };
 
@@ -138,7 +179,9 @@ static uint8_t notify_func(struct bt_conn *conn, struct bt_gatt_subscribe_params
 	LOG_ERR("[NOTIFICATION] from %d data %p length %u", i, data, length);
 //	LOG_HEXDUMP_ERR(data, length, "Value");
 
-	if (params == &devices[i].handles.temperature) {
+	if (0) {
+#ifdef CONFIG_APP_ESS_TEMPERATURE
+	} else if (params == &devices[i].handles.temperature) {
 		uint16_t value;
 		float fp_value;
 
@@ -149,18 +192,8 @@ static uint8_t notify_func(struct bt_conn *conn, struct bt_gatt_subscribe_params
 		devices[i].readings.received |= RECEIVED_TEMPERATURE;
 LOG_ERR("temp = %fc", fp_value);
 //2?
-	} else if (params == &devices[i].handles.pressure) {
-		uint32_t value;
-		float fp_value;
-
-		value = sys_get_le32(&((uint8_t *)data)[0]);
-		fp_value = (float)value;
-
-		devices[i].readings.pressure = fp_value;
-		devices[i].readings.received |= RECEIVED_PRESSURE;
-
-LOG_ERR("press = %fPa", fp_value);
-//4?
+#endif
+#ifdef CONFIG_APP_ESS_HUMIDITY
 	} else if (params == &devices[i].handles.humidity) {
 		uint16_t value;
 		float fp_value;
@@ -173,12 +206,29 @@ LOG_ERR("press = %fPa", fp_value);
 
 LOG_ERR("hum = %f%c", fp_value, '%');
 //2?
+#endif
+#ifdef CONFIG_APP_ESS_PRESSURE
+	} else if (params == &devices[i].handles.pressure) {
+		uint32_t value;
+		float fp_value;
+
+		value = sys_get_le32(&((uint8_t *)data)[0]);
+		fp_value = (float)value;
+
+		devices[i].readings.pressure = fp_value;
+		devices[i].readings.received |= RECEIVED_PRESSURE;
+
+LOG_ERR("press = %fPa", fp_value);
+//4?
+#endif
+#ifdef CONFIG_APP_ESS_DEW_POINT
 	} else if (params == &devices[i].handles.dew_point) {
 		devices[i].readings.dew_point = ((int8_t *)data)[0];
 		devices[i].readings.received |= RECEIVED_DEW_POINT;
 
 LOG_ERR("dew = %dc", ((uint8_t *)data)[0]);
 //1?
+#endif
 	} else {
 LOG_ERR("not valid");
 	}
@@ -252,10 +302,10 @@ static uint8_t discover_func(struct bt_conn *conn, const struct bt_gatt_attr *at
 	if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_ESS)) {
 		devices[current_index].state = STATE_DISCOVERING;
 
-		devices[current_index].handles.status = FIND_PRESSURE;
+		devices[current_index].handles.status = FIND_TEMPERATURE;
 		devices[current_index].handles.service = attr->handle;
 
-		memcpy(&uuid, BT_UUID_PRESSURE, sizeof(uuid));
+		memcpy(&uuid, BT_UUID_TEMPERATURE, sizeof(uuid));
 		discover_params.uuid = &uuid.uuid;
 		discover_params.start_handle = attr->handle + 1;
 		discover_params.type = BT_GATT_DISCOVER_CHARACTERISTIC;
@@ -264,90 +314,7 @@ static uint8_t discover_func(struct bt_conn *conn, const struct bt_gatt_attr *at
 		if (err) {
 			LOG_ERR("Discover failed (err %d)", err);
 		}
-	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_PRESSURE)) {
-		devices[current_index].handles.status = FIND_PRESSURE_CCC;
-		devices[current_index].handles.pressure.value_handle =
-								bt_gatt_attr_value_handle(attr);
-
-		memcpy(&uuid, BT_UUID_GATT_CCC, sizeof(uuid));
-		discover_params.uuid = &uuid.uuid;
-		discover_params.start_handle = attr->handle + 2;
-		discover_params.type = BT_GATT_DISCOVER_DESCRIPTOR;
-
-		err = bt_gatt_discover(conn, &discover_params);
-		if (err) {
-			LOG_ERR("Discover failed (err %d)", err);
-		}
-	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_GATT_CCC) &&
-		   devices[current_index].handles.status == FIND_PRESSURE_CCC) {
-		devices[current_index].handles.status = FIND_HUMIDITY;
-		devices[current_index].handles.pressure.ccc_handle = attr->handle;
-
-		memcpy(&uuid, BT_UUID_HUMIDITY, sizeof(uuid));
-		discover_params.uuid = &uuid.uuid;
-		discover_params.start_handle = devices[current_index].handles.service + 1;
-		discover_params.type = BT_GATT_DISCOVER_CHARACTERISTIC;
-
-		err = bt_gatt_discover(conn, &discover_params);
-		if (err) {
-			LOG_ERR("Discover failed (err %d)", err);
-		}
-	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_HUMIDITY)) {
-		devices[current_index].handles.status = FIND_HUMIDITY_CCC;
-		devices[current_index].handles.humidity.value_handle =
-								bt_gatt_attr_value_handle(attr);
-
-		memcpy(&uuid, BT_UUID_GATT_CCC, sizeof(uuid));
-		discover_params.uuid = &uuid.uuid;
-		discover_params.start_handle = attr->handle + 2;
-		discover_params.type = BT_GATT_DISCOVER_DESCRIPTOR;
-
-		err = bt_gatt_discover(conn, &discover_params);
-		if (err) {
-			LOG_ERR("Discover failed (err %d)", err);
-		}
-	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_GATT_CCC) &&
-		   devices[current_index].handles.status == FIND_HUMIDITY_CCC) {
-		devices[current_index].handles.status = FIND_DEW_POINT;
-		devices[current_index].handles.humidity.ccc_handle = attr->handle;
-
-		memcpy(&uuid, BT_UUID_DEW_POINT, sizeof(uuid));
-		discover_params.uuid = &uuid.uuid;
-		discover_params.start_handle = devices[current_index].handles.service + 1;
-		discover_params.type = BT_GATT_DISCOVER_CHARACTERISTIC;
-
-		err = bt_gatt_discover(conn, &discover_params);
-		if (err) {
-			LOG_ERR("Discover failed (err %d)", err);
-		}
-	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_DEW_POINT)) {
-		devices[current_index].handles.status = FIND_DEW_POINT_CCC;
-		devices[current_index].handles.dew_point.value_handle =
-								bt_gatt_attr_value_handle(attr);
-
-		memcpy(&uuid, BT_UUID_GATT_CCC, sizeof(uuid));
-		discover_params.uuid = &uuid.uuid;
-		discover_params.start_handle = attr->handle + 2;
-		discover_params.type = BT_GATT_DISCOVER_DESCRIPTOR;
-
-		err = bt_gatt_discover(conn, &discover_params);
-		if (err) {
-			LOG_ERR("Discover failed (err %d)", err);
-		}
-	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_GATT_CCC) &&
-		   devices[current_index].handles.status == FIND_DEW_POINT_CCC) {
-		devices[current_index].handles.status = FIND_TEMPERATURE;
-		devices[current_index].handles.dew_point.ccc_handle = attr->handle;
-
-		memcpy(&uuid, BT_UUID_TEMPERATURE, sizeof(uuid));
-		discover_params.uuid = &uuid.uuid;
-		discover_params.start_handle = devices[current_index].handles.service + 1;
-		discover_params.type = BT_GATT_DISCOVER_CHARACTERISTIC;
-
-		err = bt_gatt_discover(conn, &discover_params);
-		if (err) {
-			LOG_ERR("Discover failed (err %d)", err);
-		}
+#ifdef CONFIG_APP_ESS_TEMPERATURE
 	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_TEMPERATURE)) {
 		devices[current_index].handles.status = FIND_TEMPERATURE_CCC;
 		devices[current_index].handles.temperature.value_handle =
@@ -364,8 +331,98 @@ static uint8_t discover_func(struct bt_conn *conn, const struct bt_gatt_attr *at
 		}
 	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_GATT_CCC) &&
 		   devices[current_index].handles.status == FIND_TEMPERATURE_CCC) {
-		devices[current_index].handles.status = SUBSCRIBE_PRESSURE;
+		devices[current_index].handles.status = FIND_HUMIDITY;
 		devices[current_index].handles.temperature.ccc_handle = attr->handle;
+
+		memcpy(&uuid, BT_UUID_HUMIDITY, sizeof(uuid));
+		discover_params.uuid = &uuid.uuid;
+		discover_params.start_handle = devices[current_index].handles.service + 1;
+		discover_params.type = BT_GATT_DISCOVER_CHARACTERISTIC;
+
+		err = bt_gatt_discover(conn, &discover_params);
+		if (err) {
+			LOG_ERR("Discover failed (err %d)", err);
+		}
+#endif
+#ifdef CONFIG_APP_ESS_HUMIDITY
+	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_HUMIDITY)) {
+		devices[current_index].handles.status = FIND_HUMIDITY_CCC;
+		devices[current_index].handles.humidity.value_handle =
+								bt_gatt_attr_value_handle(attr);
+
+		memcpy(&uuid, BT_UUID_GATT_CCC, sizeof(uuid));
+		discover_params.uuid = &uuid.uuid;
+		discover_params.start_handle = attr->handle + 2;
+		discover_params.type = BT_GATT_DISCOVER_DESCRIPTOR;
+
+		err = bt_gatt_discover(conn, &discover_params);
+		if (err) {
+			LOG_ERR("Discover failed (err %d)", err);
+		}
+	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_GATT_CCC) &&
+		   devices[current_index].handles.status == FIND_HUMIDITY_CCC) {
+		devices[current_index].handles.status = FIND_PRESSURE;
+		devices[current_index].handles.humidity.ccc_handle = attr->handle;
+
+		memcpy(&uuid, BT_UUID_PRESSURE, sizeof(uuid));
+		discover_params.uuid = &uuid.uuid;
+		discover_params.start_handle = devices[current_index].handles.service + 1;
+		discover_params.type = BT_GATT_DISCOVER_CHARACTERISTIC;
+
+		err = bt_gatt_discover(conn, &discover_params);
+		if (err) {
+			LOG_ERR("Discover failed (err %d)", err);
+		}
+#endif
+#ifdef CONFIG_APP_ESS_PRESSURE
+	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_PRESSURE)) {
+		devices[current_index].handles.status = FIND_PRESSURE_CCC;
+		devices[current_index].handles.pressure.value_handle =
+								bt_gatt_attr_value_handle(attr);
+
+		memcpy(&uuid, BT_UUID_GATT_CCC, sizeof(uuid));
+		discover_params.uuid = &uuid.uuid;
+		discover_params.start_handle = attr->handle + 2;
+		discover_params.type = BT_GATT_DISCOVER_DESCRIPTOR;
+
+		err = bt_gatt_discover(conn, &discover_params);
+		if (err) {
+			LOG_ERR("Discover failed (err %d)", err);
+		}
+	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_GATT_CCC) &&
+		   devices[current_index].handles.status == FIND_PRESSURE_CCC) {
+		devices[current_index].handles.status = FIND_DEW_POINT;
+		devices[current_index].handles.pressure.ccc_handle = attr->handle;
+
+		memcpy(&uuid, BT_UUID_DEW_POINT, sizeof(uuid));
+		discover_params.uuid = &uuid.uuid;
+		discover_params.start_handle = devices[current_index].handles.service + 1;
+		discover_params.type = BT_GATT_DISCOVER_CHARACTERISTIC;
+
+		err = bt_gatt_discover(conn, &discover_params);
+		if (err) {
+			LOG_ERR("Discover failed (err %d)", err);
+		}
+#endif
+#ifdef CONFIG_APP_ESS_DEW_POINT
+	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_DEW_POINT)) {
+		devices[current_index].handles.status = FIND_DEW_POINT_CCC;
+		devices[current_index].handles.dew_point.value_handle =
+								bt_gatt_attr_value_handle(attr);
+
+		memcpy(&uuid, BT_UUID_GATT_CCC, sizeof(uuid));
+		discover_params.uuid = &uuid.uuid;
+		discover_params.start_handle = attr->handle + 2;
+		discover_params.type = BT_GATT_DISCOVER_DESCRIPTOR;
+
+		err = bt_gatt_discover(conn, &discover_params);
+		if (err) {
+			LOG_ERR("Discover failed (err %d)", err);
+		}
+	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_GATT_CCC) &&
+		   devices[current_index].handles.status == FIND_DEW_POINT_CCC) {
+		devices[current_index].handles.status = SUBSCRIBE_PRESSURE;
+		devices[current_index].handles.dew_point.ccc_handle = attr->handle;
 
 		devices[current_index].handles.pressure.subscribe = subscribe_func;
 		devices[current_index].handles.pressure.write = NULL;
@@ -378,11 +435,13 @@ static uint8_t discover_func(struct bt_conn *conn, const struct bt_gatt_attr *at
 		} else {
 			LOG_ERR("[SUBSCRIBED]");
 		}
+#endif
 	}
 
 	if (err) {
 		err = bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
-	}
+	} else {
+}
 
 	return BT_GATT_ITER_STOP;
 }
@@ -438,6 +497,8 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 	while (i < DEVICE_COUNT) {
 		if (devices[i].connection == conn) {
 			devices[i].state = STATE_IDLE;
+			devices[i].handles.status = 0;
+			memset(&devices[i].readings, 0, sizeof(struct device_readings));
 			break;
 		}
 
@@ -515,6 +576,7 @@ int main(void)
 
 	while (current_index < DEVICE_COUNT) {
 		devices[current_index].state = STATE_IDLE;
+		devices[current_index].handles.status = 0;
 		memset(&devices[current_index].handles, 0, sizeof(struct device_handles));
 		++current_index;
 	}

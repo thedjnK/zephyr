@@ -6,6 +6,34 @@ module = APPLICATION
 module-str = application
 source "subsys/logging/Kconfig.template.log_config"
 
+menu "ESS profile listeners"
+
+menuconfig APP_ESS_TEMPERATURE
+	bool "Temperature"
+	default y
+	help
+	  Enables subscribing to and outputting temperature readings.
+
+menuconfig APP_ESS_HUMIDITY
+	bool "Humidity"
+	default y
+	help
+	  Enables subscribing to and outputting humidity readings.
+
+menuconfig APP_ESS_PRESSURE
+	bool "Pressure"
+	default y
+	help
+	  Enables subscribing to and outputting pressure readings.
+
+menuconfig APP_ESS_DEW_POINT
+	bool "Dew point"
+	default y
+	help
+	  Enables subscribing to and outputting dew point readings.
+
+endmenu
+
 endmenu
 
 source "Kconfig.zephyr"
