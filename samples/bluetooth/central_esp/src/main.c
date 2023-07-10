@@ -50,6 +50,11 @@ enum handle_status_t {
 	FIND_DEW_POINT,
 	FIND_DEW_POINT_CCC,
 #endif
+#ifdef CONFIG_APP_BATTERY_LEVEL
+	FIND_BATTERY_SERVICE,
+	FIND_BATTERY_LEVEL,
+	FIND_BATTERY_LEVEL_CCC,
+#endif
 #ifdef CONFIG_APP_ESS_TEMPERATURE
 	SUBSCRIBE_TEMPERATURE,
 #endif
@@ -62,6 +67,10 @@ enum handle_status_t {
 #ifdef CONFIG_APP_ESS_DEW_POINT
 	SUBSCRIBE_DEW_POINT,
 #endif
+#ifdef CONFIG_APP_BATTERY_LEVEL
+	SUBSCRIBE_BATTERY_LEVEL,
+#endif
+	AWAITING_READINGS,
 };
 
 enum readings_received_t {
@@ -78,6 +87,9 @@ enum readings_received_t {
 #ifdef CONFIG_APP_ESS_DEW_POINT
 	RECEIVED_DEW_POINT = BIT(3),
 #endif
+#ifdef CONFIG_APP_BATTERY_LEVEL
+	RECEIVED_BATTERY_LEVEL = BIT(4),
+#endif
 	RECEIVED_TMP_BITMASK,
 	RECEIVED_ALL = (((RECEIVED_TMP_BITMASK - 1) << 1) - 1),
 };
@@ -85,6 +97,7 @@ enum readings_received_t {
 struct device_handles {
 	enum handle_status_t status;
 	uint16_t service;
+	uint16_t battery_service;
 #ifdef CONFIG_APP_ESS_TEMPERATURE
 	struct bt_gatt_subscribe_params temperature;
 #endif
@@ -96,6 +109,9 @@ struct device_handles {
 #endif
 #ifdef CONFIG_APP_ESS_DEW_POINT
 	struct bt_gatt_subscribe_params dew_point;
+#endif
+#ifdef CONFIG_APP_BATTERY_LEVEL
+	struct bt_gatt_subscribe_params battery_level;
 #endif
 };
 
@@ -111,6 +127,9 @@ struct device_readings {
 #endif
 #ifdef CONFIG_APP_ESS_DEW_POINT
 	int8_t dew_point;
+#endif
+#ifdef CONFIG_APP_BATTERY_LEVEL
+	uint8_t battery_level;
 #endif
 	enum readings_received_t received;
 };
@@ -226,7 +245,15 @@ LOG_ERR("press = %fPa", fp_value);
 		devices[i].readings.dew_point = ((int8_t *)data)[0];
 		devices[i].readings.received |= RECEIVED_DEW_POINT;
 
-LOG_ERR("dew = %dc", ((uint8_t *)data)[0]);
+LOG_ERR("dew = %dc", ((int8_t *)data)[0]);
+//1?
+#endif
+#ifdef CONFIG_APP_BATTERY_LEVEL
+	} else if (params == &devices[i].handles.battery_level) {
+		devices[i].readings.battery_level = ((int8_t *)data)[0];
+		devices[i].readings.received |= RECEIVED_BATTERY_LEVEL;
+
+LOG_ERR("battery = %u%c", ((uint8_t *)data)[0], '%');
 //1?
 #endif
 	} else {
@@ -244,45 +271,225 @@ static void subscribe_func(struct bt_conn *conn, uint8_t err,
 
 		LOG_ERR("Gonna matey");
 		err = bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
-	} else if (devices[current_index].handles.status == SUBSCRIBE_TEMPERATURE) {
-		LOG_ERR("All finished!");
-		devices[current_index].state = STATE_ACTIVE;
-		k_sem_give(&next_action_sem);
 	} else {
-	        k_work_submit(&subscribe_workqueue);
+		k_work_submit(&subscribe_workqueue);
 	}
 }
 
+static void next_action(struct bt_conn *conn, const struct bt_gatt_attr *attr);
 static void subscribe_work(struct k_work *work)
 {
-	int err;
-	struct bt_gatt_subscribe_params *params;
+	next_action(devices[current_index].connection, NULL);
+}
 
-	if (devices[current_index].handles.status == SUBSCRIBE_PRESSURE) {
-		devices[current_index].handles.status = SUBSCRIBE_HUMDIITY;
-		params = &devices[current_index].handles.humidity;
-	} else if (devices[current_index].handles.status == SUBSCRIBE_HUMDIITY) {
-		devices[current_index].handles.status = SUBSCRIBE_DEW_POINT;
-		params = &devices[current_index].handles.dew_point;
-	} else if (devices[current_index].handles.status == SUBSCRIBE_DEW_POINT) {
-		devices[current_index].handles.status = SUBSCRIBE_TEMPERATURE;
-		params = &devices[current_index].handles.temperature;
-	} else {
+static void next_action(struct bt_conn *conn, const struct bt_gatt_attr *attr)
+{
+	int err;
+	uint8_t action = 0;
+	uint8_t service = 0;
+	struct bt_gatt_subscribe_params *param = NULL;
+
+	/* Increment to next state */
+	++devices[current_index].handles.status;
+
+	if (devices[current_index].handles.status == AWAITING_READINGS) {
+		/* Finished the setup state machine */
+		LOG_ERR("All finished!");
+		devices[current_index].state = STATE_ACTIVE;
+		devices[current_index].handles.status = AWAITING_READINGS;
+		k_sem_give(&next_action_sem);
 		return;
 	}
 
-/* */
-	params->subscribe = subscribe_func;
-	params->write = NULL;
-	params->notify = notify_func;
-	params->value = BT_GATT_CCC_NOTIFY;
+	switch (devices[current_index].handles.status) {
+#ifdef CONFIG_APP_ESS_TEMPERATURE
+		case FIND_TEMPERATURE:
+		{
+			memcpy(&uuid, BT_UUID_TEMPERATURE, sizeof(uuid));
+			break;
+		}
+#endif
+#ifdef CONFIG_APP_ESS_HUMIDITY
+		case FIND_HUMIDITY:
+		{
+			memcpy(&uuid, BT_UUID_HUMIDITY, sizeof(uuid));
+			break;
+		}
+#endif
+#ifdef CONFIG_APP_ESS_PRESSURE
+		case FIND_PRESSURE:
+		{
+			memcpy(&uuid, BT_UUID_PRESSURE, sizeof(uuid));
+			break;
+		}
+#endif
+#ifdef CONFIG_APP_ESS_DEW_POINT
+		case FIND_DEW_POINT:
+		{
+			memcpy(&uuid, BT_UUID_DEW_POINT, sizeof(uuid));
+			break;
+		}
+#endif
+#ifdef CONFIG_APP_BATTERY_LEVEL
+		case FIND_BATTERY_SERVICE:
+		{
+			memcpy(&uuid, BT_UUID_BAS, sizeof(uuid));
+			action = 1;
+			break;
+		}
+		case FIND_BATTERY_LEVEL:
+		{
+			memcpy(&uuid, BT_UUID_BAS_BATTERY_LEVEL, sizeof(uuid));
+service = 1;
+			break;
+		}
+#endif
+#ifdef CONFIG_APP_ESS_TEMPERATURE
+		case FIND_TEMPERATURE_CCC:
+#endif
+#ifdef CONFIG_APP_ESS_HUMIDITY
+		case FIND_HUMIDITY_CCC:
+#endif
+#ifdef CONFIG_APP_ESS_PRESSURE
+		case FIND_PRESSURE_CCC:
+#endif
+#ifdef CONFIG_APP_ESS_DEW_POINT
+		case FIND_DEW_POINT_CCC:
+#endif
+#ifdef CONFIG_APP_BATTERY_LEVEL
+		case FIND_BATTERY_LEVEL_CCC:
+#endif
+		{
+			memcpy(&uuid, BT_UUID_GATT_CCC, sizeof(uuid));
+			action = 2;
+			break;
+		}
+#ifdef CONFIG_APP_ESS_TEMPERATURE
+		case SUBSCRIBE_TEMPERATURE:
+		{
+			param = &devices[current_index].handles.temperature;
+			action = 3;
+			break;
+		}
+#endif
+#ifdef CONFIG_APP_ESS_HUMIDITY
+		case SUBSCRIBE_HUMDIITY:
+		{
+			param = &devices[current_index].handles.humidity;
+			action = 3;
+			break;
+		}
+#endif
+#ifdef CONFIG_APP_ESS_PRESSURE
+		case SUBSCRIBE_PRESSURE:
+		{
+			param = &devices[current_index].handles.pressure;
+			action = 3;
+			break;
+		}
+#endif
+#ifdef CONFIG_APP_ESS_DEW_POINT
+		case SUBSCRIBE_DEW_POINT:
+		{
+			param = &devices[current_index].handles.dew_point;
+			action = 3;
+			break;
+		}
+#endif
+#ifdef CONFIG_APP_BATTERY_LEVEL
+//todo
+		case SUBSCRIBE_BATTERY_LEVEL:
+		{
+			param = &devices[current_index].handles.battery_level;
+			action = 3;
+			break;
+		}
+#endif
+		default:
+		{
+			LOG_ERR("Invalid state execution attempted: %d, maximum is %d (AWAITING_READINGS)", devices[current_index].handles.status, AWAITING_READINGS);
+			return;
+		}
 
-	err = bt_gatt_subscribe(devices[current_index].connection, params);
+	};
 
-	if (err && err != -EALREADY) {
-		LOG_ERR("Subscribe failed (err %d)", err);
-	} else {
-		LOG_ERR("[SUBSCRIBED]");
+LOG_ERR("action is %d, state is %d", action, devices[current_index].handles.status);
+
+#if 0
+LOG_ERR("FIND_ESS_SERVICE = %d", FIND_ESS_SERVICE);
+#ifdef CONFIG_APP_ESS_TEMPERATURE
+LOG_ERR("FIND_TEMPERATURE = %d\nFIND_TEMPERATURE_CCC = %d", FIND_TEMPERATURE, FIND_TEMPERATURE_CCC);
+#endif
+#ifdef CONFIG_APP_ESS_HUMIDITY
+LOG_ERR("FIND_HUMIDITY = %d\nFIND_HUMIDITY_CCC = %d", FIND_HUMIDITY, FIND_HUMIDITY_CCC);
+#endif
+#ifdef CONFIG_APP_ESS_PRESSURE
+LOG_ERR("FIND_PRESSURE = %d\nFIND_PRESSURE_CCC = %d", FIND_PRESSURE, FIND_PRESSURE_CCC);
+#endif
+#ifdef CONFIG_APP_ESS_DEW_POINT
+LOG_ERR("FIND_DEW_POINT = %d\nFIND_DEW_POINT_CCC = %d", FIND_DEW_POINT, FIND_DEW_POINT_CCC);
+#endif
+#ifdef CONFIG_APP_BATTERY_LEVEL
+LOG_ERR("FIND_BATTERY_LEVEL = %d\nFIND_BATTERY_LEVEL_CCC = %d", FIND_BATTERY_LEVEL, FIND_BATTERY_LEVEL_CCC);
+#endif
+#ifdef CONFIG_APP_ESS_TEMPERATURE
+LOG_ERR("SUBSCRIBE_TEMPERATURE = %d", SUBSCRIBE_TEMPERATURE);
+#endif
+#ifdef CONFIG_APP_ESS_HUMIDITY
+LOG_ERR("SUBSCRIBE_HUMDIITY = %d", SUBSCRIBE_HUMDIITY);
+#endif
+#ifdef CONFIG_APP_ESS_PRESSURE
+LOG_ERR("SUBSCRIBE_PRESSURE = %d", SUBSCRIBE_PRESSURE);
+#endif
+#ifdef CONFIG_APP_ESS_DEW_POINT
+LOG_ERR("SUBSCRIBE_DEW_POINT = %d", SUBSCRIBE_DEW_POINT);
+#endif
+#ifdef CONFIG_APP_BATTERY_LEVEL
+LOG_ERR("SUBSCRIBE_BATTERY_LEVEL = %d", SUBSCRIBE_BATTERY_LEVEL);
+#endif
+LOG_ERR("AWAITING_READINGS = %d", AWAITING_READINGS);
+#endif
+
+	if (action == 0) {
+		/* Find characteristic of service */
+		if (service == 0) {
+			discover_params.start_handle = devices[current_index].handles.service + 1;
+		} else {
+			discover_params.start_handle = devices[current_index].handles.battery_service + 1;
+		}
+		discover_params.type = BT_GATT_DISCOVER_CHARACTERISTIC;
+	} else if (action == 1) {
+		/* Find service */
+		discover_params.start_handle = BT_ATT_FIRST_ATTRIBUTE_HANDLE;
+		discover_params.end_handle = BT_ATT_LAST_ATTRIBUTE_HANDLE;
+		discover_params.type = BT_GATT_DISCOVER_PRIMARY;
+	} else if (action == 2) {
+		/* Find descriptor of discovered characteristic */
+		discover_params.start_handle = attr->handle + 2;
+		discover_params.type = BT_GATT_DISCOVER_DESCRIPTOR;
+	} else if (action == 3) {
+		/* Subscribe for notifications */
+		param->subscribe = subscribe_func;
+		param->write = NULL;
+		param->notify = notify_func;
+		param->value = BT_GATT_CCC_NOTIFY;
+
+		err = bt_gatt_subscribe(conn, param);
+
+		if (err && err != -EALREADY) {
+			LOG_ERR("Subscribe failed (err %d)", err);
+		} else {
+			LOG_ERR("[SUBSCRIBED]");
+		}
+	}
+
+	if (action == 0 || action == 1 || action == 2) {
+		discover_params.uuid = &uuid.uuid;
+		err = bt_gatt_discover(conn, &discover_params);
+
+		if (err) {
+			LOG_ERR("Discover failed (err %d)", err);
+		}
 	}
 }
 
@@ -301,147 +508,56 @@ static uint8_t discover_func(struct bt_conn *conn, const struct bt_gatt_attr *at
 
 	if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_ESS)) {
 		devices[current_index].state = STATE_DISCOVERING;
-
-		devices[current_index].handles.status = FIND_TEMPERATURE;
 		devices[current_index].handles.service = attr->handle;
-
-		memcpy(&uuid, BT_UUID_TEMPERATURE, sizeof(uuid));
-		discover_params.uuid = &uuid.uuid;
-		discover_params.start_handle = attr->handle + 1;
-		discover_params.type = BT_GATT_DISCOVER_CHARACTERISTIC;
-
-		err = bt_gatt_discover(conn, &discover_params);
-		if (err) {
-			LOG_ERR("Discover failed (err %d)", err);
-		}
 #ifdef CONFIG_APP_ESS_TEMPERATURE
 	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_TEMPERATURE)) {
-		devices[current_index].handles.status = FIND_TEMPERATURE_CCC;
 		devices[current_index].handles.temperature.value_handle =
 								bt_gatt_attr_value_handle(attr);
-
-		memcpy(&uuid, BT_UUID_GATT_CCC, sizeof(uuid));
-		discover_params.uuid = &uuid.uuid;
-		discover_params.start_handle = attr->handle + 2;
-		discover_params.type = BT_GATT_DISCOVER_DESCRIPTOR;
-
-		err = bt_gatt_discover(conn, &discover_params);
-		if (err) {
-			LOG_ERR("Discover failed (err %d)", err);
-		}
 	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_GATT_CCC) &&
 		   devices[current_index].handles.status == FIND_TEMPERATURE_CCC) {
-		devices[current_index].handles.status = FIND_HUMIDITY;
 		devices[current_index].handles.temperature.ccc_handle = attr->handle;
-
-		memcpy(&uuid, BT_UUID_HUMIDITY, sizeof(uuid));
-		discover_params.uuid = &uuid.uuid;
-		discover_params.start_handle = devices[current_index].handles.service + 1;
-		discover_params.type = BT_GATT_DISCOVER_CHARACTERISTIC;
-
-		err = bt_gatt_discover(conn, &discover_params);
-		if (err) {
-			LOG_ERR("Discover failed (err %d)", err);
-		}
 #endif
 #ifdef CONFIG_APP_ESS_HUMIDITY
 	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_HUMIDITY)) {
-		devices[current_index].handles.status = FIND_HUMIDITY_CCC;
 		devices[current_index].handles.humidity.value_handle =
 								bt_gatt_attr_value_handle(attr);
-
-		memcpy(&uuid, BT_UUID_GATT_CCC, sizeof(uuid));
-		discover_params.uuid = &uuid.uuid;
-		discover_params.start_handle = attr->handle + 2;
-		discover_params.type = BT_GATT_DISCOVER_DESCRIPTOR;
-
-		err = bt_gatt_discover(conn, &discover_params);
-		if (err) {
-			LOG_ERR("Discover failed (err %d)", err);
-		}
 	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_GATT_CCC) &&
 		   devices[current_index].handles.status == FIND_HUMIDITY_CCC) {
-		devices[current_index].handles.status = FIND_PRESSURE;
 		devices[current_index].handles.humidity.ccc_handle = attr->handle;
-
-		memcpy(&uuid, BT_UUID_PRESSURE, sizeof(uuid));
-		discover_params.uuid = &uuid.uuid;
-		discover_params.start_handle = devices[current_index].handles.service + 1;
-		discover_params.type = BT_GATT_DISCOVER_CHARACTERISTIC;
-
-		err = bt_gatt_discover(conn, &discover_params);
-		if (err) {
-			LOG_ERR("Discover failed (err %d)", err);
-		}
 #endif
 #ifdef CONFIG_APP_ESS_PRESSURE
 	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_PRESSURE)) {
-		devices[current_index].handles.status = FIND_PRESSURE_CCC;
 		devices[current_index].handles.pressure.value_handle =
 								bt_gatt_attr_value_handle(attr);
-
-		memcpy(&uuid, BT_UUID_GATT_CCC, sizeof(uuid));
-		discover_params.uuid = &uuid.uuid;
-		discover_params.start_handle = attr->handle + 2;
-		discover_params.type = BT_GATT_DISCOVER_DESCRIPTOR;
-
-		err = bt_gatt_discover(conn, &discover_params);
-		if (err) {
-			LOG_ERR("Discover failed (err %d)", err);
-		}
 	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_GATT_CCC) &&
 		   devices[current_index].handles.status == FIND_PRESSURE_CCC) {
-		devices[current_index].handles.status = FIND_DEW_POINT;
 		devices[current_index].handles.pressure.ccc_handle = attr->handle;
-
-		memcpy(&uuid, BT_UUID_DEW_POINT, sizeof(uuid));
-		discover_params.uuid = &uuid.uuid;
-		discover_params.start_handle = devices[current_index].handles.service + 1;
-		discover_params.type = BT_GATT_DISCOVER_CHARACTERISTIC;
-
-		err = bt_gatt_discover(conn, &discover_params);
-		if (err) {
-			LOG_ERR("Discover failed (err %d)", err);
-		}
 #endif
 #ifdef CONFIG_APP_ESS_DEW_POINT
 	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_DEW_POINT)) {
-		devices[current_index].handles.status = FIND_DEW_POINT_CCC;
 		devices[current_index].handles.dew_point.value_handle =
 								bt_gatt_attr_value_handle(attr);
-
-		memcpy(&uuid, BT_UUID_GATT_CCC, sizeof(uuid));
-		discover_params.uuid = &uuid.uuid;
-		discover_params.start_handle = attr->handle + 2;
-		discover_params.type = BT_GATT_DISCOVER_DESCRIPTOR;
-
-		err = bt_gatt_discover(conn, &discover_params);
-		if (err) {
-			LOG_ERR("Discover failed (err %d)", err);
-		}
 	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_GATT_CCC) &&
 		   devices[current_index].handles.status == FIND_DEW_POINT_CCC) {
-		devices[current_index].handles.status = SUBSCRIBE_PRESSURE;
 		devices[current_index].handles.dew_point.ccc_handle = attr->handle;
-
-		devices[current_index].handles.pressure.subscribe = subscribe_func;
-		devices[current_index].handles.pressure.write = NULL;
-		devices[current_index].handles.pressure.notify = notify_func;
-		devices[current_index].handles.pressure.value = BT_GATT_CCC_NOTIFY;
-
-		err = bt_gatt_subscribe(conn, &devices[current_index].handles.pressure);
-		if (err && err != -EALREADY) {
-			LOG_ERR("Subscribe failed (err %d)", err);
-		} else {
-			LOG_ERR("[SUBSCRIBED]");
-		}
+#endif
+#ifdef CONFIG_APP_BATTERY_LEVEL
+	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_BAS)) {
+		devices[current_index].handles.battery_service = attr->handle;
+	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_BAS_BATTERY_LEVEL)) {
+		devices[current_index].handles.battery_level.value_handle =
+								bt_gatt_attr_value_handle(attr);
+	} else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_GATT_CCC) &&
+		   devices[current_index].handles.status == FIND_BATTERY_LEVEL_CCC) {
+		devices[current_index].handles.battery_level.ccc_handle = attr->handle;
 #endif
 	}
 
 	if (err) {
 		err = bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
 	} else {
-}
+		next_action(conn, attr);
+	}
 
 	return BT_GATT_ITER_STOP;
 }
@@ -569,7 +685,7 @@ int main(void)
 	LOG_ERR("Bluetooth initialized");
 
 	k_sem_init(&next_action_sem, 1, 1);
-        k_work_init(&subscribe_workqueue, subscribe_work);
+	k_work_init(&subscribe_workqueue, subscribe_work);
 
 /* */
 	current_index = 0;
@@ -626,16 +742,16 @@ static int ess_readings_handler(const struct shell *sh, size_t argc, char **argv
 		buffer[(strlen(buffer) - 1)] = 0;
 	}
 
-        shell_print(sh, "##%s^^", buffer);
+	shell_print(sh, "##%s^^", buffer);
 
-        return 0;
+	return 0;
 }
 
 SHELL_STATIC_SUBCMD_SET_CREATE(ess_cmd,
-        /* 'version' command handler. */
-        SHELL_CMD(readings, NULL, "Output ESS values", ess_readings_handler),
-        /* Array terminator. */
-        SHELL_SUBCMD_SET_END
+	/* 'version' command handler. */
+	SHELL_CMD(readings, NULL, "Output ESS values", ess_readings_handler),
+	/* Array terminator. */
+	SHELL_SUBCMD_SET_END
 );
 
 SHELL_CMD_REGISTER(ess, &ess_cmd, "ESS profile commands", NULL);

@@ -34,6 +34,12 @@ menuconfig APP_ESS_DEW_POINT
 
 endmenu
 
+menuconfig APP_BATTERY_LEVEL
+	bool "Battery level"
+	default y
+	help
+	  Enables subscribing to and outputting battery level.
+
 endmenu
 
 source "Kconfig.zephyr"
