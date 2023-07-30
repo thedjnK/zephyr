@@ -40,6 +40,36 @@ menuconfig APP_BATTERY_LEVEL
 	help
 	  Enables subscribing to and outputting battery level.
 
+choice
+	prompt "Output format"
+	default APP_OUTPUT_FORMAT_CUSTOM
+
+config APP_OUTPUT_FORMAT_CSV
+	bool "CSV"
+	help
+	  Output will be in CSV format, with headings of each field.
+
+config APP_OUTPUT_FORMAT_CUSTOM
+	bool "Custom"
+	help
+	  Output will be in custom concise format, without headings
+
+endchoice
+
+menu "Output fields"
+
+menuconfig APP_OUTPUT_DEVICE_ADDRESS
+	bool "Device address"
+	help
+	  Include device Bluetooth address in output.
+
+menuconfig APP_OUTPUT_DEVICE_NAME
+	bool "Device name"
+	help
+	  Include device name (from struct) in output.
+
+endmenu
+
 endmenu
 
 source "Kconfig.zephyr"

@@ -143,7 +143,7 @@ struct device_params {
 	const char *name;
 };
 
-struct device_params devices[2] = {
+static struct device_params devices[2] = {
 	{
 		.address = {
 			.type = BT_ADDR_LE_RANDOM,
@@ -274,12 +274,6 @@ static void subscribe_func(struct bt_conn *conn, uint8_t err,
 	} else {
 		k_work_submit(&subscribe_workqueue);
 	}
-}
-
-static void next_action(struct bt_conn *conn, const struct bt_gatt_attr *attr);
-static void subscribe_work(struct k_work *work)
-{
-	next_action(devices[current_index].connection, NULL);
 }
 
 static void next_action(struct bt_conn *conn, const struct bt_gatt_attr *attr)
@@ -491,6 +485,11 @@ LOG_ERR("AWAITING_READINGS = %d", AWAITING_READINGS);
 			LOG_ERR("Discover failed (err %d)", err);
 		}
 	}
+}
+
+static void subscribe_work(struct k_work *work)
+{
+	next_action(devices[current_index].connection, NULL);
 }
 
 static uint8_t discover_func(struct bt_conn *conn, const struct bt_gatt_attr *attr,
@@ -708,6 +707,7 @@ int main(void)
 	return 0;
 }
 
+#if defined(CONFIG_APP_OUTPUT_FORMAT_CUSTOM)
 /* Outputs ESS readings in the following format:
  * Start delimiter: ##
  * { for each device with data:
@@ -746,6 +746,62 @@ static int ess_readings_handler(const struct shell *sh, size_t argc, char **argv
 
 	return 0;
 }
+#elif defined(CONFIG_APP_OUTPUT_FORMAT_CSV)
+/* Outputs ESS readings in CSV format, with headings */
+static int ess_readings_handler(const struct shell *sh, size_t argc, char **argv)
+{
+	uint8_t i = 0;
+	uint8_t buffer[128] = {0};
+
+	sprintf(&buffer[0], "device,"
+#if defined(CONFIG_APP_OUTPUT_DEVICE_ADDRESS)
+		"address,"
+#endif
+#if defined(CONFIG_APP_OUTPUT_DEVICE_NAME)
+		"name,"
+#endif
+		"temperature,pressure,humidity,dewpoint,\n");
+
+	while (i < DEVICE_COUNT) {
+		if (devices[i].state == STATE_ACTIVE &&
+		    devices[i].readings.received == RECEIVED_ALL) {
+			sprintf(&buffer[strlen(buffer)], "%d,"
+#if defined(CONFIG_APP_OUTPUT_DEVICE_ADDRESS)
+				"%02x%02x%02x%02x%02x%02x%02x,"
+#endif
+#if defined(CONFIG_APP_OUTPUT_DEVICE_NAME)
+				"%s,"
+#endif
+				"%.2f,%.0f,%.2f,%d,\n", i,
+
+#if defined(CONFIG_APP_OUTPUT_DEVICE_ADDRESS)
+				devices[i].address.type, devices[i].address.a.val[5],
+				devices[i].address.a.val[4], devices[i].address.a.val[3],
+				devices[i].address.a.val[2], devices[i].address.a.val[1],
+				devices[i].address.a.val[0],
+#endif
+#if defined(CONFIG_APP_OUTPUT_DEVICE_NAME)
+				devices[i].name,
+#endif
+				devices[i].readings.temperature, devices[i].readings.pressure,
+				devices[i].readings.humidity, devices[i].readings.dew_point);
+			devices[i].readings.received = RECEIVED_NONE;
+		}
+
+		++i;
+	}
+
+	if (strlen(buffer) > 0) {
+		buffer[(strlen(buffer) - 1)] = 0;
+	}
+
+	shell_print(sh, "%s\n", buffer);
+
+	return 0;
+}
+#else
+#error "Invalid output format selected"
+#endif
 
 SHELL_STATIC_SUBCMD_SET_CREATE(ess_cmd,
 	/* 'version' command handler. */
