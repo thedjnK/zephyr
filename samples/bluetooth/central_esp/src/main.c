@@ -177,6 +177,8 @@ static struct device_params devices[2] = {
 
 #define DEVICE_COUNT ARRAY_SIZE(devices)
 static uint8_t current_index = 0;
+static bool disabled = false; /* If true, prevents connecting to sensors */
+static bool busy = false; /* If true, application is busy connecting/subscribing to a device and will wait before connecting to next device */
 
 static struct bt_uuid_16 uuid = BT_UUID_INIT_16(0);
 static struct bt_gatt_discover_params discover_params;
@@ -304,6 +306,7 @@ static void next_action(struct bt_conn *conn, const struct bt_gatt_attr *attr)
 	if (devices[current_index].handles.status == AWAITING_READINGS) {
 		/* Finished the setup state machine */
 		LOG_ERR("All finished!");
+		busy = false;
 		devices[current_index].state = STATE_ACTIVE;
 		devices[current_index].handles.status = AWAITING_READINGS;
 		k_sem_give(&next_action_sem);
@@ -589,6 +592,11 @@ static void connected(struct bt_conn *conn, uint8_t conn_err)
 		bt_conn_unref(conn);
 
 		devices[current_index].state = STATE_IDLE;
+
+		/* Mark as not busy and advance state machine */
+		busy = false;
+		k_sem_give(&next_action_sem);
+
 		return;
 	}
 
@@ -623,10 +631,21 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 
 	LOG_ERR("Disconnected: %s (reason 0x%02x)", addr, reason);
 
+	/* Check if this was the device currently being serviced */
+	if (devices[current_index].connection == conn) {
+		i = current_index;
+
+		if (devices[i].state != STATE_ACTIVE && busy) {
+			/* We are no longer busy, allow state machine to connect to next device */
+			busy = false;
+		}
+	}
+
 	/* Search for the instance */
 	while (i < DEVICE_COUNT) {
 		if (devices[i].connection == conn) {
 			devices[i].state = STATE_IDLE;
+			devices[i].connection = NULL;
 			devices[i].handles.status = 0;
 			memset(&devices[i].readings, 0, sizeof(struct device_readings));
 			break;
@@ -652,6 +671,10 @@ static void sensor_function(void *, void *, void *)
 	while (1) {
 		k_sem_take(&next_action_sem, K_FOREVER);
 
+		if (disabled || busy) {
+			continue;
+		}
+
 		/* Check if there are any devices with states that require attention */
 		uint8_t i = 0;
 		while (i < DEVICE_COUNT) {
@@ -674,6 +697,7 @@ static void sensor_function(void *, void *, void *)
 			}
 		}
 
+		busy = true;
 		devices[current_index].state = STATE_CONNECTING;
 
 		err = bt_conn_le_create(&devices[current_index].address, BT_CONN_LE_CREATE_CONN,
@@ -681,6 +705,7 @@ static void sensor_function(void *, void *, void *)
 
 		if (err) {
 			LOG_ERR("Got error: %d", err);
+			busy = false;
 		}
 	}
 }
@@ -879,10 +904,6 @@ static int ess_readings_handler(const struct shell *sh, size_t argc, char **argv
 		++i;
 	}
 
-	if (strlen(buffer) > 0) {
-		buffer[(strlen(buffer) - 1)] = 0;
-	}
-
 	shell_print(sh, "%s\n", buffer);
 
 	return 0;
@@ -891,9 +912,76 @@ static int ess_readings_handler(const struct shell *sh, size_t argc, char **argv
 #error "Invalid output format selected"
 #endif
 
+static int ess_disconnect_handler(const struct shell *sh, size_t argc, char **argv)
+{
+	uint8_t i = 0;
+
+	while (i < DEVICE_COUNT) {
+		if (devices[i].state != STATE_IDLE && devices[i].connection != NULL) {
+			int32_t err = bt_conn_disconnect(devices[i].connection, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+
+			if (err != 0) {
+				shell_error(sh, "Error whilst disconnecting from #%d: %d", i, err);
+			}
+		}
+
+		++i;
+	}
+
+	shell_print(sh, "Disconnected from all devices");
+
+	return 0;
+}
+
+static int ess_disable_handler(const struct shell *sh, size_t argc, char **argv)
+{
+	if (!disabled) {
+		uint8_t i = 0;
+		disabled = true;
+
+		while (i < DEVICE_COUNT) {
+			if (devices[i].state != STATE_IDLE && devices[i].connection != NULL) {
+				int32_t err = bt_conn_disconnect(devices[i].connection, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+
+				if (err != 0) {
+					shell_error(sh, "Error whilst disconnecting from #%d: %d", i, err);
+				}
+			}
+
+			++i;
+		}
+
+		shell_print(sh, "Application state changed to disabled.");
+
+		return 0;
+	}
+
+	shell_error(sh, "Application is already disabled.");
+
+	return -EPERM;
+}
+
+static int ess_enable_handler(const struct shell *sh, size_t argc, char **argv)
+{
+	if (disabled) {
+		disabled = false;
+		shell_print(sh, "Application state changed to enabled.");
+		k_sem_give(&next_action_sem);
+		return 0;
+	}
+
+	shell_error(sh, "Application is already enabled.");
+
+	return -EPERM;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(ess_cmd,
-	/* 'version' command handler. */
+	/* Command handlers */
 	SHELL_CMD(readings, NULL, "Output ESS values", ess_readings_handler),
+	SHELL_CMD(disconnect, NULL, "Disconnect from all devices", ess_disconnect_handler),
+	SHELL_CMD(disable, NULL, "Disable fetching readings", ess_disable_handler),
+	SHELL_CMD(enable, NULL, "Enable fetching readings", ess_enable_handler),
+
 	/* Array terminator. */
 	SHELL_SUBCMD_SET_END
 );
