@@ -90,8 +90,23 @@ enum readings_received_t {
 #ifdef CONFIG_APP_BATTERY_LEVEL
 	RECEIVED_BATTERY_LEVEL = BIT(4),
 #endif
-	RECEIVED_TMP_BITMASK,
-	RECEIVED_ALL = (((RECEIVED_TMP_BITMASK - 1) << 1) - 1),
+	RECEIVED_ALL = (
+#ifdef CONFIG_APP_ESS_TEMPERATURE
+			RECEIVED_TEMPERATURE +
+#endif
+#ifdef CONFIG_APP_ESS_HUMIDITY
+			RECEIVED_HUMIDITY +
+#endif
+#ifdef CONFIG_APP_ESS_PRESSURE
+			RECEIVED_PRESSURE +
+#endif
+#ifdef CONFIG_APP_ESS_DEW_POINT
+			RECEIVED_DEW_POINT +
+#endif
+#ifdef CONFIG_APP_BATTERY_LEVEL
+			RECEIVED_BATTERY_LEVEL +
+#endif
+			0),
 };
 
 struct device_handles {
@@ -729,9 +744,39 @@ static int ess_readings_handler(const struct shell *sh, size_t argc, char **argv
 	while (i < DEVICE_COUNT) {
 		if (devices[i].state == STATE_ACTIVE &&
 		    devices[i].readings.received == RECEIVED_ALL) {
-			sprintf(&buffer[strlen(buffer)], "%d,%.2f,%.0f,%.2f,%d,", i,
-				devices[i].readings.temperature, devices[i].readings.pressure,
-				devices[i].readings.humidity, devices[i].readings.dew_point);
+			sprintf(&buffer[strlen(buffer)], "%d,"
+#ifdef CONFIG_APP_ESS_TEMPERATURE
+				"%.2f,"
+#endif
+#ifdef CONFIG_APP_ESS_HUMIDITY
+				"%.0f,"
+#endif
+#ifdef CONFIG_APP_ESS_PRESSURE
+				"%.2f,"
+#endif
+#ifdef CONFIG_APP_ESS_DEW_POINT
+				"%d,"
+#endif
+#ifdef CONFIG_APP_ESS_BATTERY_LEVEL
+				"%d,"
+#endif
+				, i
+#ifdef CONFIG_APP_ESS_TEMPERATURE
+				, devices[i].readings.temperature,
+#endif
+#ifdef CONFIG_APP_ESS_HUMIDITY
+				, devices[i].readings.humidity,
+#endif
+#ifdef CONFIG_APP_ESS_PRESSURE
+				, devices[i].readings.pressure,
+#endif
+#ifdef CONFIG_APP_ESS_DEW_POINT
+				, devices[i].readings.dew_point
+#endif
+#ifdef CONFIG_APP_ESS_BATTERY_LEVEL
+				, devices[i].readings.battery_level
+#endif
+				);
 			devices[i].readings.received = RECEIVED_NONE;
 		}
 
@@ -802,31 +847,30 @@ static int ess_readings_handler(const struct shell *sh, size_t argc, char **argv
 #ifdef CONFIG_APP_BATTERY_LEVEL
 				"%d,"
 #endif
-				"\n", i,
-
+				"\n", i
 #if defined(CONFIG_APP_OUTPUT_DEVICE_ADDRESS)
-				devices[i].address.type, devices[i].address.a.val[5],
+				, devices[i].address.type, devices[i].address.a.val[5],
 				devices[i].address.a.val[4], devices[i].address.a.val[3],
 				devices[i].address.a.val[2], devices[i].address.a.val[1],
-				devices[i].address.a.val[0],
+				devices[i].address.a.val[0]
 #endif
 #if defined(CONFIG_APP_OUTPUT_DEVICE_NAME)
-				devices[i].name,
+				, devices[i].name
 #endif
 #ifdef CONFIG_APP_ESS_TEMPERATURE
-				devices[i].readings.temperature,
+				, devices[i].readings.temperature
 #endif
 #ifdef CONFIG_APP_ESS_HUMIDITY
-				devices[i].readings.humidity,
+				, devices[i].readings.humidity
 #endif
 #ifdef CONFIG_APP_ESS_PRESSURE
-				devices[i].readings.pressure,
+				, devices[i].readings.pressure
 #endif
 #ifdef CONFIG_APP_ESS_DEW_POINT
-				devices[i].readings.dew_point,
+				, devices[i].readings.dew_point
 #endif
 #ifdef CONFIG_APP_BATTERY_LEVEL
-				devices[i].readings.battery_level
+				, devices[i].readings.battery_level
 #endif
 				);
 			devices[i].readings.received = RECEIVED_NONE;
