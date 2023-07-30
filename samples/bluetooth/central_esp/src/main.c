@@ -227,7 +227,6 @@ static uint8_t notify_func(struct bt_conn *conn, struct bt_gatt_subscribe_params
 		devices[i].readings.temperature = fp_value;
 		devices[i].readings.received |= RECEIVED_TEMPERATURE;
 LOG_ERR("temp = %fc", fp_value);
-//2?
 #endif
 #ifdef CONFIG_APP_ESS_HUMIDITY
 	} else if (params == &devices[i].handles.humidity) {
@@ -241,7 +240,6 @@ LOG_ERR("temp = %fc", fp_value);
 		devices[i].readings.received |= RECEIVED_HUMIDITY;
 
 LOG_ERR("hum = %f%c", fp_value, '%');
-//2?
 #endif
 #ifdef CONFIG_APP_ESS_PRESSURE
 	} else if (params == &devices[i].handles.pressure) {
@@ -255,7 +253,6 @@ LOG_ERR("hum = %f%c", fp_value, '%');
 		devices[i].readings.received |= RECEIVED_PRESSURE;
 
 LOG_ERR("press = %fPa", fp_value);
-//4?
 #endif
 #ifdef CONFIG_APP_ESS_DEW_POINT
 	} else if (params == &devices[i].handles.dew_point) {
@@ -263,7 +260,6 @@ LOG_ERR("press = %fPa", fp_value);
 		devices[i].readings.received |= RECEIVED_DEW_POINT;
 
 LOG_ERR("dew = %dc", ((int8_t *)data)[0]);
-//1?
 #endif
 #ifdef CONFIG_APP_BATTERY_LEVEL
 	} else if (params == &devices[i].handles.battery_level) {
@@ -271,7 +267,6 @@ LOG_ERR("dew = %dc", ((int8_t *)data)[0]);
 		devices[i].readings.received |= RECEIVED_BATTERY_LEVEL;
 
 LOG_ERR("battery = %u%c", ((uint8_t *)data)[0], '%');
-//1?
 #endif
 	} else {
 LOG_ERR("not valid");
@@ -352,7 +347,7 @@ static void next_action(struct bt_conn *conn, const struct bt_gatt_attr *attr)
 		case FIND_BATTERY_LEVEL:
 		{
 			memcpy(&uuid, BT_UUID_BAS_BATTERY_LEVEL, sizeof(uuid));
-service = 1;
+			service = 1;
 			break;
 		}
 #endif
@@ -589,11 +584,9 @@ static void connected(struct bt_conn *conn, uint8_t conn_err)
 	if (conn_err) {
 		LOG_ERR("Failed to connect to %s (%u)", addr, conn_err);
 
-		bt_conn_unref(conn);
-
-		devices[current_index].state = STATE_IDLE;
-
 		/* Mark as not busy and advance state machine */
+		bt_conn_unref(conn);
+		devices[current_index].state = STATE_IDLE;
 		busy = false;
 		k_sem_give(&next_action_sem);
 
@@ -975,12 +968,76 @@ static int ess_enable_handler(const struct shell *sh, size_t argc, char **argv)
 	return -EPERM;
 }
 
+static char *state_to_text(uint8_t state)
+{
+	if (state == STATE_IDLE) {
+		return "Idle";
+	} else if (state == STATE_CONNECTING) {
+		return "Connecting";
+	} else if (state == STATE_CONNECTED) {
+		return "Connected";
+	} else if (state == STATE_DISCOVERING) {
+		return "Discovering";
+	} else if (state == STATE_ACTIVE) {
+		return "Active";
+	}
+
+	return "Unknown";
+}
+
+static int ess_status_handler(const struct shell *sh, size_t argc, char **argv)
+{
+	uint8_t i = 0;
+	uint8_t largest_name = 0;
+	int8_t repeat_size;
+
+	while (i < DEVICE_COUNT) {
+		uint8_t string_size;
+
+		string_size = (uint8_t)strlen(devices[i].name);
+
+		if (string_size > largest_name) {
+			largest_name = string_size;
+		}
+
+		++i;
+	}
+
+
+	repeat_size = (int8_t)largest_name - 4;
+	if (repeat_size < 0) {
+		repeat_size = 0;
+	}
+
+	shell_print(sh, "# | Address        | Name%.*s | State       | Readings", repeat_size, "                  ");
+	shell_print(sh, "--|----------------|-----%.*s-|-------------|---------", repeat_size, "------------------");
+
+	i = 0;
+
+	while (i < DEVICE_COUNT) {
+		char *state = state_to_text(devices[i].state);
+
+		shell_print(sh, "%d | %02x%02x%02x%02x%02x%02x%02x | %s%.*s | %s%.*s | 0x%x", i,
+			    devices[i].address.type, devices[i].address.a.val[5],
+			    devices[i].address.a.val[4], devices[i].address.a.val[3],
+			    devices[i].address.a.val[2], devices[i].address.a.val[1],
+			    devices[i].address.a.val[0], devices[i].name,
+			    (largest_name - strlen(devices[i].name)), "                  ",
+			    state, (11 - strlen(state)), "                  ",
+			    devices[i].readings.received);
+		++i;
+	}
+
+	return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(ess_cmd,
 	/* Command handlers */
 	SHELL_CMD(readings, NULL, "Output ESS values", ess_readings_handler),
 	SHELL_CMD(disconnect, NULL, "Disconnect from all devices", ess_disconnect_handler),
 	SHELL_CMD(disable, NULL, "Disable fetching readings", ess_disable_handler),
 	SHELL_CMD(enable, NULL, "Enable fetching readings", ess_enable_handler),
+	SHELL_CMD(status, NULL, "Show device status", ess_status_handler),
 
 	/* Array terminator. */
 	SHELL_SUBCMD_SET_END
