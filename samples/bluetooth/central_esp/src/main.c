@@ -751,7 +751,7 @@ static int ess_readings_handler(const struct shell *sh, size_t argc, char **argv
 static int ess_readings_handler(const struct shell *sh, size_t argc, char **argv)
 {
 	uint8_t i = 0;
-	uint8_t buffer[128] = {0};
+	uint8_t buffer[256] = {0};
 
 	sprintf(&buffer[0], "device,"
 #if defined(CONFIG_APP_OUTPUT_DEVICE_ADDRESS)
@@ -760,7 +760,22 @@ static int ess_readings_handler(const struct shell *sh, size_t argc, char **argv
 #if defined(CONFIG_APP_OUTPUT_DEVICE_NAME)
 		"name,"
 #endif
-		"temperature,pressure,humidity,dewpoint,\n");
+#ifdef CONFIG_APP_ESS_TEMPERATURE
+		"temperature,"
+#endif
+#ifdef CONFIG_APP_ESS_HUMIDITY
+		"pressure,"
+#endif
+#ifdef CONFIG_APP_ESS_PRESSURE
+		"humidity,"
+#endif
+#ifdef CONFIG_APP_ESS_DEW_POINT
+		"dewpoint,"
+#endif
+#ifdef CONFIG_APP_BATTERY_LEVEL
+		"battery,"
+#endif
+		"\n");
 
 	while (i < DEVICE_COUNT) {
 		if (devices[i].state == STATE_ACTIVE &&
@@ -772,7 +787,22 @@ static int ess_readings_handler(const struct shell *sh, size_t argc, char **argv
 #if defined(CONFIG_APP_OUTPUT_DEVICE_NAME)
 				"%s,"
 #endif
-				"%.2f,%.0f,%.2f,%d,\n", i,
+#ifdef CONFIG_APP_ESS_TEMPERATURE
+				"%.2f,"
+#endif
+#ifdef CONFIG_APP_ESS_HUMIDITY
+				"%.2f,"
+#endif
+#ifdef CONFIG_APP_ESS_PRESSURE
+				"%.0f,"
+#endif
+#ifdef CONFIG_APP_ESS_DEW_POINT
+				"%d,"
+#endif
+#ifdef CONFIG_APP_BATTERY_LEVEL
+				"%d,"
+#endif
+				"\n", i,
 
 #if defined(CONFIG_APP_OUTPUT_DEVICE_ADDRESS)
 				devices[i].address.type, devices[i].address.a.val[5],
@@ -783,8 +813,22 @@ static int ess_readings_handler(const struct shell *sh, size_t argc, char **argv
 #if defined(CONFIG_APP_OUTPUT_DEVICE_NAME)
 				devices[i].name,
 #endif
-				devices[i].readings.temperature, devices[i].readings.pressure,
-				devices[i].readings.humidity, devices[i].readings.dew_point);
+#ifdef CONFIG_APP_ESS_TEMPERATURE
+				devices[i].readings.temperature,
+#endif
+#ifdef CONFIG_APP_ESS_HUMIDITY
+				devices[i].readings.humidity,
+#endif
+#ifdef CONFIG_APP_ESS_PRESSURE
+				devices[i].readings.pressure,
+#endif
+#ifdef CONFIG_APP_ESS_DEW_POINT
+				devices[i].readings.dew_point,
+#endif
+#ifdef CONFIG_APP_BATTERY_LEVEL
+				devices[i].readings.battery_level
+#endif
+				);
 			devices[i].readings.received = RECEIVED_NONE;
 		}
 
