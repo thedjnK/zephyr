@@ -189,6 +189,8 @@ static k_tid_t sensor_thread_id;
 static struct k_thread sensor_thread;
 static struct k_work subscribe_workqueue;
 
+const char tick_character[] = {0xe2, 0x9c, 0x93, 0x00};
+
 static uint8_t notify_func(struct bt_conn *conn, struct bt_gatt_subscribe_params *params,
 			   const void *data, uint16_t length)
 {
@@ -1017,14 +1019,15 @@ static int ess_status_handler(const struct shell *sh, size_t argc, char **argv)
 	while (i < DEVICE_COUNT) {
 		char *state = state_to_text(devices[i].state);
 
-		shell_print(sh, "%d | %02x%02x%02x%02x%02x%02x%02x | %s%.*s | %s%.*s | 0x%x", i,
+		shell_print(sh, "%d | %02x%02x%02x%02x%02x%02x%02x | %s%.*s | %s%.*s | 0x%x %s", i,
 			    devices[i].address.type, devices[i].address.a.val[5],
 			    devices[i].address.a.val[4], devices[i].address.a.val[3],
 			    devices[i].address.a.val[2], devices[i].address.a.val[1],
 			    devices[i].address.a.val[0], devices[i].name,
 			    (largest_name - strlen(devices[i].name)), "                  ",
 			    state, (11 - strlen(state)), "                  ",
-			    devices[i].readings.received);
+			    devices[i].readings.received,
+			    (devices[i].readings.received == RECEIVED_ALL ? tick_character : ""));
 		++i;
 	}
 
