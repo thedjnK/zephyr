@@ -782,13 +782,13 @@ static int ess_readings_handler(const struct shell *sh, size_t argc, char **argv
 #endif
 				, i
 #ifdef CONFIG_APP_ESS_TEMPERATURE
-				, devices[i].readings.temperature,
+				, devices[i].readings.temperature
 #endif
 #ifdef CONFIG_APP_ESS_HUMIDITY
-				, devices[i].readings.humidity,
+				, devices[i].readings.humidity
 #endif
 #ifdef CONFIG_APP_ESS_PRESSURE
-				, devices[i].readings.pressure,
+				, devices[i].readings.pressure
 #endif
 #ifdef CONFIG_APP_ESS_DEW_POINT
 				, devices[i].readings.dew_point
