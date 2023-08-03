@@ -164,14 +164,14 @@ static struct device_params devices[2] = {
 			.type = BT_ADDR_LE_RANDOM,
 			.a.val = { 0xc5, 0x2a, 0xc2, 0x37, 0x3e, 0xe2 },
 		},
-		.name = "first",
+		.name = "Roof Network",
 	},
 	{
 		.address = {
 			.type = BT_ADDR_LE_RANDOM,
 			.a.val = { 0x22, 0x07, 0x7b, 0x1c, 0xb2, 0xf7 },
 		},
-		.name = "second",
+		.name = "Server Room",
 	}
 };
 
@@ -621,6 +621,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 {
 	uint8_t i = 0;
 	char addr[BT_ADDR_LE_STR_LEN];
+	bool increment = false;
 
 	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
 
@@ -629,6 +630,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 	/* Check if this was the device currently being serviced */
 	if (devices[current_index].connection == conn) {
 		i = current_index;
+		increment = true;
 
 		if (devices[i].state != STATE_ACTIVE && busy) {
 			/* We are no longer busy, allow state machine to connect to next device */
@@ -647,6 +649,14 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 		}
 
 		++i;
+	}
+
+	if (increment) {
+		++current_index;
+
+		if (current_index >= DEVICE_COUNT) {
+			current_index = 0;
+		}
 	}
 
 	bt_conn_unref(conn);
