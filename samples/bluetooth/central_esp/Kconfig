@@ -6,6 +6,12 @@ module = APPLICATION
 module-str = application
 source "subsys/logging/Kconfig.template.log_config"
 
+menuconfig APP_START_BOOTUP
+	bool "Start connecting at boot-up"
+	help
+	  Enables the state machine at boot-up automatically, otherwise needs
+	  to be started manually via the shell.
+
 menu "ESS profile listeners"
 
 menuconfig APP_ESS_TEMPERATURE

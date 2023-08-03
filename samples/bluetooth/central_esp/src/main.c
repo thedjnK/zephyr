@@ -743,6 +743,10 @@ int main(void)
 
 	current_index = 0;
 
+#ifndef CONFIG_APP_START_BOOTUP
+	disabled = true;
+#endif
+
 /* */
 	sensor_thread_id = k_thread_create(&sensor_thread, sensor_thread_stack,
 					   K_THREAD_STACK_SIZEOF(sensor_thread_stack),
