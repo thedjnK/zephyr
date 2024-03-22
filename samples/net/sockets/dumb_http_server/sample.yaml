@@ -21,7 +21,7 @@ tests:
     tags: usb
     # native_sim usb driver does not work with CONFIG_POSIX_API
     platform_exclude:
-      - native_sim
+      - native_sim/native
       - native_sim/native/64
   sample.net.sockets.dumb_http_server.netusb_zeroconf:
     depends_on: usb_device
@@ -30,5 +30,5 @@ tests:
     tags: usb
     # native_sim usb driver does not work with CONFIG_POSIX_API
     platform_exclude:
-      - native_sim
+      - native_sim/native
       - native_sim/native/64
