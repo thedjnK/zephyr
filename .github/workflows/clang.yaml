@@ -8,7 +8,8 @@ concurrency:
 
 jobs:
   clang-build:
-    runs-on: self-hosted
+#    runs-on: self-hosted
+    runs-on: donotrun
     container:
       image: ghcr.io/zephyrproject-rtos/ci:v0.26.11
       options: '--entrypoint /bin/bash'
