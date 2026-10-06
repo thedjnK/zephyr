@@ -11,7 +11,7 @@
 static void timer_work_handler(struct k_work *work);
 K_WORK_DEFINE(timer_work, timer_work_handler);
 
-static uint32_t saved_time;
+//static uint32_t saved_time;
 /* TODO: Use Non-volatile memory for backup */
 static volatile uint32_t backup_reg[2];
 
@@ -56,10 +56,12 @@ uint32_t RtcGetTimerValue(void)
 	return k_uptime_get_32();
 }
 
+#if 0
 uint32_t RtcGetTimerElapsedTime(void)
 {
 	return (k_uptime_get_32() - saved_time);
 }
+#endif
 
 uint32_t RtcGetMinimumTimeout(void)
 {
@@ -73,9 +75,11 @@ void RtcStopAlarm(void)
 
 void RtcSetAlarm(uint32_t timeout)
 {
+timeout -= k_uptime_get_32();
 	k_timer_start(&lora_timer, K_MSEC(timeout), K_NO_WAIT);
 }
 
+#if 0
 uint32_t RtcSetTimerContext(void)
 {
 	saved_time = k_uptime_get_32();
@@ -88,6 +92,7 @@ uint32_t RtcGetTimerContext(void)
 {
 	return saved_time;
 }
+#endif
 
 void DelayMsMcu(uint32_t ms)
 {
