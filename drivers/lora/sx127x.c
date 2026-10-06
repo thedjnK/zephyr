@@ -36,7 +36,6 @@ LOG_MODULE_REGISTER(sx127x, CONFIG_LORA_LOG_LEVEL);
 #define SX127xGetStatus SX1272GetStatus
 #define SX127xSetModem SX1272SetModem
 #define SX127xSetChannel SX1272SetChannel
-#define SX127xIsChannelFree SX1272IsChannelFree
 #define SX127xRandom SX1272Random
 #define SX127xSetRxConfig SX1272SetRxConfig
 #define SX127xSetTxConfig SX1272SetTxConfig
@@ -50,7 +49,6 @@ LOG_MODULE_REGISTER(sx127x, CONFIG_LORA_LOG_LEVEL);
 #define SX127xSetMaxPayloadLength SX1272SetMaxPayloadLength
 #define SX127xSetPublicNetwork SX1272SetPublicNetwork
 #define SX127xGetWakeupTime SX1272GetWakeupTime
-#define SX127xSetTxContinuousWave SX1272SetTxContinuousWave
 
 #elif DT_HAS_COMPAT_STATUS_OKAY(semtech_sx1276)
 
@@ -73,7 +71,6 @@ LOG_MODULE_REGISTER(sx127x, CONFIG_LORA_LOG_LEVEL);
 #define SX127xGetStatus SX1276GetStatus
 #define SX127xSetModem SX1276SetModem
 #define SX127xSetChannel SX1276SetChannel
-#define SX127xIsChannelFree SX1276IsChannelFree
 #define SX127xRandom SX1276Random
 #define SX127xSetRxConfig SX1276SetRxConfig
 #define SX127xSetTxConfig SX1276SetTxConfig
@@ -87,7 +84,6 @@ LOG_MODULE_REGISTER(sx127x, CONFIG_LORA_LOG_LEVEL);
 #define SX127xSetMaxPayloadLength SX1276SetMaxPayloadLength
 #define SX127xSetPublicNetwork SX1276SetPublicNetwork
 #define SX127xGetWakeupTime SX1276GetWakeupTime
-#define SX127xSetTxContinuousWave SX1276SetTxContinuousWave
 
 #else
 #error No SX127x instance in device tree.
@@ -527,7 +523,6 @@ const struct Radio_s Radio = {
 	.GetStatus = SX127xGetStatus,
 	.SetModem = SX127xSetModem,
 	.SetChannel = SX127xSetChannel,
-	.IsChannelFree = SX127xIsChannelFree,
 	.Random = SX127xRandom,
 	.SetRxConfig = SX127xSetRxConfig,
 	.SetTxConfig = SX127xSetTxConfig,
@@ -547,7 +542,6 @@ const struct Radio_s Radio = {
 	.IrqProcess = NULL,
 	.RxBoosted = NULL,
 	.SetRxDutyCycle = NULL,
-	.SetTxContinuousWave = SX127xSetTxContinuousWave,
 };
 
 static int sx127x_antenna_configure(void)
@@ -631,7 +625,6 @@ static const struct lora_driver_api sx127x_lora_api = {
 	.send_async = sx12xx_lora_send_async,
 	.recv = sx12xx_lora_recv,
 	.recv_async = sx12xx_lora_recv_async,
-	.test_cw = sx12xx_lora_test_cw,
 };
 
 DEVICE_DT_INST_DEFINE(0, &sx127x_lora_init, NULL, NULL,
