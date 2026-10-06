@@ -258,46 +258,6 @@ static LoRaMacStatus_t lorawan_join_otaa(
 	return LoRaMacMlmeRequest(&mlme_req);
 }
 
-static LoRaMacStatus_t lorawan_join_abp(
-	const struct lorawan_join_config *join_cfg)
-{
-	MibRequestConfirm_t mib_req;
-
-	mib_req.Type = MIB_ABP_LORAWAN_VERSION;
-	mib_req.Param.AbpLrWanVersion.Value = LORAWAN_ABP_VERSION;
-	LoRaMacMibSetRequestConfirm(&mib_req);
-
-	mib_req.Type = MIB_NET_ID;
-	mib_req.Param.NetID = 0;
-	LoRaMacMibSetRequestConfirm(&mib_req);
-
-	mib_req.Type = MIB_DEV_ADDR;
-	mib_req.Param.DevAddr = join_cfg->abp.dev_addr;
-	LoRaMacMibSetRequestConfirm(&mib_req);
-
-	mib_req.Type = MIB_F_NWK_S_INT_KEY;
-	mib_req.Param.FNwkSIntKey = join_cfg->abp.nwk_skey;
-	LoRaMacMibSetRequestConfirm(&mib_req);
-
-	mib_req.Type = MIB_S_NWK_S_INT_KEY;
-	mib_req.Param.SNwkSIntKey = join_cfg->abp.nwk_skey;
-	LoRaMacMibSetRequestConfirm(&mib_req);
-
-	mib_req.Type = MIB_NWK_S_ENC_KEY;
-	mib_req.Param.NwkSEncKey = join_cfg->abp.nwk_skey;
-	LoRaMacMibSetRequestConfirm(&mib_req);
-
-	mib_req.Type = MIB_APP_S_KEY;
-	mib_req.Param.AppSKey = join_cfg->abp.app_skey;
-	LoRaMacMibSetRequestConfirm(&mib_req);
-
-	mib_req.Type = MIB_NETWORK_ACTIVATION;
-	mib_req.Param.NetworkActivation = ACTIVATION_TYPE_ABP;
-	LoRaMacMibSetRequestConfirm(&mib_req);
-
-	return LORAMAC_STATUS_OK;
-}
-
 int lorawan_set_region(enum lorawan_region region)
 {
 	switch (region) {
@@ -414,14 +374,6 @@ int lorawan_join(const struct lorawan_join_config *join_cfg)
 		k_sem_take(&mlme_confirm_sem, K_FOREVER);
 		if (last_mlme_confirm_status != LORAMAC_EVENT_INFO_STATUS_OK) {
 			ret = lorawan_eventinfo2errno(last_mlme_confirm_status);
-			goto out;
-		}
-	} else if (join_cfg->mode == LORAWAN_ACT_ABP) {
-		status = lorawan_join_abp(join_cfg);
-		if (status != LORAMAC_STATUS_OK) {
-			LOG_ERR("ABP join failed: %s",
-				lorawan_status2str(status));
-			ret = lorawan_status2errno(status);
 			goto out;
 		}
 	} else {

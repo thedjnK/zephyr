@@ -337,19 +337,6 @@ int sx12xx_lora_config(const struct device *dev,
 	return 0;
 }
 
-int sx12xx_lora_test_cw(const struct device *dev, uint32_t frequency,
-			int8_t tx_power,
-			uint16_t duration)
-{
-	/* Ensure available, freed in sx12xx_ev_tx_done */
-	if (!modem_acquire(&dev_data)) {
-		return -EBUSY;
-	}
-
-	Radio.SetTxContinuousWave(frequency, tx_power, duration);
-	return 0;
-}
-
 int sx12xx_init(const struct device *dev)
 {
 	atomic_set(&dev_data.modem_usage, 0);
